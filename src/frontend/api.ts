@@ -7,8 +7,6 @@ import {
   DeferredQuestionResponseDtoSchema,
   CreateSessionResponseSchema,
   RawLogsResponseDtoSchema,
-  NoteRequestResponseDtoSchema,
-  NoteSettingsResponseDtoSchema,
   QuestionRequestResponseDtoSchema,
   EndCancelResponseDtoSchema,
   RealtimeTokenDtoSchema,
@@ -22,8 +20,6 @@ import {
   type UnderstandingBranchResponseDto,
   type DeferredQuestionResponseDto,
   type RawLogsResponseDto,
-  type NoteRequestResponseDto,
-  type NoteSettingsResponseDto,
   type QuestionRequestResponseDto,
   type EndCancelResponseDto,
   type RealtimeTokenDto,
@@ -172,33 +168,6 @@ export async function resetSession(
       method: "POST",
     }),
     SessionStateDtoSchema,
-  );
-}
-
-export async function generateLectureNote(
-  sessionId: string,
-): Promise<NoteRequestResponseDto> {
-  return parseResponse(
-    await fetch(`/api/session/${encodeURIComponent(sessionId)}/notes/generate`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ trigger: "manual" }),
-    }),
-    NoteRequestResponseDtoSchema,
-  );
-}
-
-export async function setAutomaticLectureNotes(
-  sessionId: string,
-  enabled: boolean,
-): Promise<NoteSettingsResponseDto> {
-  return parseResponse(
-    await fetch(`/api/session/${encodeURIComponent(sessionId)}/notes/settings`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ enabled }),
-    }),
-    NoteSettingsResponseDtoSchema,
   );
 }
 

@@ -683,16 +683,6 @@ export const TranslationSettingsResponseDtoSchema = z.object({
   version: z.number().int(),
 });
 
-export const NoteRequestResponseDtoSchema = z.object({
-  accepted: z.boolean(),
-  queued: z.boolean(),
-  message: z.string(),
-});
-
-export const NoteSettingsResponseDtoSchema = NoteRequestResponseDtoSchema.extend({
-  enabled: z.boolean(),
-});
-
 export const AssistantRequestResponseDtoSchema = z.object({
   accepted: z.boolean(),
   requestId: z.string(),
@@ -830,8 +820,6 @@ export type TranscriptResponseDto = z.infer<typeof TranscriptResponseDtoSchema>;
 export type TranslationSettingsResponseDto = z.infer<
   typeof TranslationSettingsResponseDtoSchema
 >;
-export type NoteRequestResponseDto = z.infer<typeof NoteRequestResponseDtoSchema>;
-export type NoteSettingsResponseDto = z.infer<typeof NoteSettingsResponseDtoSchema>;
 export type AssistantRequestResponseDto = z.infer<
   typeof AssistantRequestResponseDtoSchema
 >;

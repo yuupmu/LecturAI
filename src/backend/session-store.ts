@@ -13,7 +13,8 @@ import type {
   SlideMap,
   TranslationSettings,
 } from "./schemas";
-import { getLectureNoteIntervalSeconds } from "./env";
+
+export const AUTOMATIC_NOTE_INTERVAL_SECONDS = 120;
 
 // The demo store survives Next.js hot module reloads inside the same process.
 declare global {
@@ -57,11 +58,10 @@ function createTranslationSettingsState(revision = 0): TranslationSettings {
 }
 
 export function createNoteGenerationState(
-  intervalSeconds = getLectureNoteIntervalSeconds(),
 ): NoteGenerationState {
   return {
     enabled: true,
-    intervalSeconds,
+    intervalSeconds: AUTOMATIC_NOTE_INTERVAL_SECONDS,
     status: "idle",
     revision: 0,
     lastProcessedSequence: 0,
@@ -184,6 +184,8 @@ function ensureCurrentSessionShape(session: LectureSession): void {
   session.lectureNotes ??= [];
   session.noteGeneratingUnitIds ??= new Set<string>();
   session.noteGeneration ??= createNoteGenerationState();
+  session.noteGeneration.enabled = true;
+  session.noteGeneration.intervalSeconds = AUTOMATIC_NOTE_INTERVAL_SECONDS;
   session.noteGeneration.processedItemIds ??= session.transcripts
     .filter(
       (transcript) =>
@@ -345,9 +347,7 @@ export async function resetSession(session: LectureSession): Promise<void> {
   session.lectureMemory = createEmptyLectureMemory();
   session.lectureNotes = [];
   session.noteGeneratingUnitIds = new Set<string>();
-  session.noteGeneration = createNoteGenerationState(
-    session.noteGeneration.intervalSeconds,
-  );
+  session.noteGeneration = createNoteGenerationState();
   session.noteGenerationChain = Promise.resolve();
   session.finalizationChain = Promise.resolve();
   session.lectureRevision = 0;

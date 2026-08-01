@@ -10,6 +10,10 @@ import {
   EXPLAIN_TRANSCRIPT_SELECTION_PROMPT,
   formatSelectionContext,
 } from "./explain-transcript-selection";
+import {
+  resolveTranscriptSelectionIntent,
+  TRANSCRIPT_SELECTION_LLM_PROMPTS,
+} from "../questions/transcript-selection-prompts";
 
 export const MAX_ASSISTANT_INPUT_CHARACTERS = 600_000;
 export const ASSISTANT_INPUT_LIMIT_MESSAGE =
@@ -53,11 +57,20 @@ export async function generateLectureAssistantAnswer(
   context: FullLectureAssistantContext,
 ): Promise<LectureAssistantModelAnswer> {
   const userContent = formatAssistantInput(context);
+  const selectionPrompt = context.selection
+    ? [
+        EXPLAIN_TRANSCRIPT_SELECTION_PROMPT,
+        TRANSCRIPT_SELECTION_LLM_PROMPTS[
+          resolveTranscriptSelectionIntent(context.selection.intent)
+        ],
+        context.selection.kind === "translation" && context.selection.targetLanguage
+          ? `답변은 선택한 번역문과 같은 ${context.selection.targetLanguage === "en" ? "영어" : "한국어"}로 작성하라.`
+          : null,
+      ].filter(Boolean).join("\n\n")
+    : null;
   const systemPrompt = [
     QUESTION_PROMPT,
-    context.mode === "explain_selection"
-      ? EXPLAIN_TRANSCRIPT_SELECTION_PROMPT
-      : "사용자의 질문에 직접 답하라.",
+    selectionPrompt ?? "사용자의 질문에 직접 답하라.",
     BASIS_PROMPT,
   ].join("\n\n");
 
@@ -69,7 +82,10 @@ export async function generateLectureAssistantAnswer(
     // No tools are supplied to this request. In particular, this path cannot
     // invoke web search, file search, a vector store, or an external KB.
     const response = await getOpenAIClient().responses.parse({
-      model: getEnv().OPENAI_SMART_MODEL,
+      // This generator powers the live selection popup and the immediate
+      // understanding branch. Prefer the low-latency model so the first answer
+      // arrives while the relevant lecture moment is still fresh.
+      model: getEnv().OPENAI_FAST_MODEL,
       input: [
         { role: "system", content: systemPrompt },
         { role: "user", content: userContent },
@@ -112,7 +128,7 @@ export function formatAssistantInput(
 
   if (context.mode === "explain_selection") {
     blocks.push(formatSelectionContext(context));
-    blocks.push("<request>선택한 부분을 자세히 설명하라.</request>");
+    blocks.push("<request>선택한 부분에 요청된 방식으로 바로 답하라.</request>");
   } else {
     blocks.push(
       "<user_question>",

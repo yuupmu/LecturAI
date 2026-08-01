@@ -21,6 +21,10 @@ import {
 import { buildFullLectureContext } from "./build-full-lecture-context";
 import type { FullLectureAssistantContext } from "./build-full-lecture-context";
 import { validateAssistantAnswer } from "./validate-assistant-answer";
+import {
+  InvalidQuestionTranscriptSelectionError,
+  validateQuestionTranscriptSelection,
+} from "../questions/validate-transcript-selection";
 
 export class InvalidTranscriptSelectionError extends Error {
   constructor(message = "선택한 대본 범위를 확인할 수 없습니다.") {
@@ -36,18 +40,16 @@ export interface EnqueueAssistantResult {
 
 export function enqueueLectureAssistantRequest(
   session: LectureSession,
-  untrustedInput: LectureAssistantRequestInput,
+  untrustedInput: z.input<typeof LectureAssistantRequestInputSchema>,
   generator: LectureAssistantGenerator = generateLectureAssistantAnswer,
 ): EnqueueAssistantResult {
+  if (session.status === "finalizing" || session.status === "ended") {
+    throw new Error("SESSION_NOT_ACCEPTING_ASSISTANT_REQUESTS");
+  }
   const input = LectureAssistantRequestInputSchema.parse(untrustedInput);
   const snapshotSequence = session.transcripts.at(-1)?.sequence ?? 0;
   const selection = input.mode === "explain_selection"
-    ? validateTranscriptSelection(session, {
-        selectedText: input.selectedText,
-        sourceItemIds: input.sourceItemIds,
-        startSequence: input.startSequence,
-        endSequence: input.endSequence,
-      }, snapshotSequence)
+    ? validateTranscriptSelection(session, input, snapshotSequence)
     : null;
   const requestKey = buildActiveRequestKey(input, selection);
   const duplicate = session.assistantRequests.find(
@@ -235,40 +237,18 @@ export function validateTranscriptSelection(
   untrustedSelection: z.input<typeof TranscriptSelectionContextSchema>,
   snapshotSequence: number,
 ): TranscriptSelectionContext {
-  const selection = TranscriptSelectionContextSchema.parse(untrustedSelection);
-  const normalizedText = normalizeSelectionText(selection.selectedText);
-  if (normalizedText.length < 4) throw new InvalidTranscriptSelectionError();
-
-  const uniqueIds = Array.from(new Set(selection.sourceItemIds));
-  const sourceSet = new Set(uniqueIds);
-  const sourceTranscripts = session.transcripts
-    .filter(
-      (transcript) =>
-        sourceSet.has(transcript.itemId) &&
-        transcript.sequence <= snapshotSequence,
-    )
-    .sort((left, right) => left.sequence - right.sequence);
-  if (sourceTranscripts.length !== uniqueIds.length) {
-    throw new InvalidTranscriptSelectionError();
+  try {
+    return validateQuestionTranscriptSelection(
+      session,
+      TranscriptSelectionContextSchema.parse(untrustedSelection),
+      snapshotSequence,
+    );
+  } catch (error) {
+    if (error instanceof InvalidQuestionTranscriptSelectionError) {
+      throw new InvalidTranscriptSelectionError();
+    }
+    throw error;
   }
-  const startSequence = sourceTranscripts[0]?.sequence;
-  const endSequence = sourceTranscripts.at(-1)?.sequence;
-  if (
-    startSequence !== selection.startSequence ||
-    endSequence !== selection.endSequence
-  ) {
-    throw new InvalidTranscriptSelectionError();
-  }
-  const sourceText = normalizeSelectionText(
-    sourceTranscripts.map((transcript) => transcript.text).join("\n"),
-  );
-  if (!sourceText.includes(normalizedText)) {
-    throw new InvalidTranscriptSelectionError();
-  }
-  return TranscriptSelectionContextSchema.parse({
-    ...selection,
-    sourceItemIds: uniqueIds,
-  });
 }
 
 function normalizeSelectionText(value: string): string {

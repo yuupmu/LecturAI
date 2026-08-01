@@ -29,7 +29,6 @@ OPENAI_FINAL_NOTE_MODEL=gpt-4.1-nano
 OPENAI_MATERIAL_MODEL=gpt-4.1-nano
 # Google 번역 없이 자막을 바로 번역하는 저지연 모델
 OPENAI_TRANSLATION_MODEL=gpt-4.1-nano
-LECTURE_NOTE_INTERVAL_SECONDS=120
 LECTURE_ENDING_GRACE_SECONDS=10
 LECTURE_INACTIVITY_SECONDS=600
 LECTURE_INACTIVITY_GRACE_SECONDS=30
@@ -174,15 +173,7 @@ curl -X POST http://localhost:3000/api/session/SESSION_UUID/transcript \
 
 응답의 deprecated `action`은 항상 `none`입니다. 저장 직후 응답하며 자막 요청 안에서 필기 모델을 호출하지 않습니다.
 
-수동 필기와 자동 필기 설정:
-
-```bash
-curl -X POST http://localhost:3000/api/session/SESSION_UUID/notes/generate \
-  -H 'Content-Type: application/json' -d '{"trigger":"manual"}'
-
-curl -X POST http://localhost:3000/api/session/SESSION_UUID/notes/settings \
-  -H 'Content-Type: application/json' -d '{"enabled":false}'
-```
+구조화 필기는 수업 중 2분마다 자동으로 누적 생성됩니다.
 
 질문, 부재, 종료 취소:
 

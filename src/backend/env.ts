@@ -1,18 +1,5 @@
 import { z } from "zod";
 
-export const LectureNoteIntervalSchema = z.coerce
-  .number()
-  .int()
-  .min(5)
-  .max(86_400)
-  .default(120);
-
-export function getLectureNoteIntervalSeconds(): number {
-  return LectureNoteIntervalSchema.parse(
-    process.env.LECTURE_NOTE_INTERVAL_SECONDS,
-  );
-}
-
 const PositiveSecondsSchema = z.coerce.number().int().min(1).max(86_400);
 
 export function getExplicitEndingGraceSeconds(): number {
@@ -62,7 +49,6 @@ const EnvSchema = z.object({
       : value,
     z.string().trim().min(1).default("gpt-4.1-nano"),
   ),
-  LECTURE_NOTE_INTERVAL_SECONDS: LectureNoteIntervalSchema,
   LECTURE_ENDING_GRACE_SECONDS: PositiveSecondsSchema.default(10),
   LECTURE_INACTIVITY_SECONDS: PositiveSecondsSchema.default(600),
   LECTURE_INACTIVITY_GRACE_SECONDS: PositiveSecondsSchema.default(30),

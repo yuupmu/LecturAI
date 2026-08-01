@@ -2,20 +2,20 @@
 
 import { useEffect, useRef, useState, type PointerEvent } from "react";
 import { createPortal } from "react-dom";
-import type { LectureQuestionDto } from "@/frontend/types";
-import { LectureQuestionMessage } from "./LectureQuestionMessage";
+import type { LectureAssistantQuestionDto } from "@/frontend/types";
+import { LectureAssistantMessage } from "./LectureAssistantMessage";
 import assistantStyles from "./LectureAssistant.module.css";
 import questionStyles from "./LectureSupport.module.css";
 
 export function SelectionExplanationModal({
-  question,
+  request,
   selectedText,
   anchor,
   error,
   onRetry,
   onClose,
 }: {
-  question: LectureQuestionDto | null;
+  request: LectureAssistantQuestionDto | null;
   selectedText: string;
   anchor: { top: number; left: number };
   error: string | null;
@@ -111,12 +111,8 @@ export function SelectionExplanationModal({
           <button type="button" onClick={onClose} aria-label="닫기">×</button>
         </header>
         <div className={assistantStyles.modalBody} aria-live="polite">
-          {question ? (
-            <LectureQuestionMessage
-              question={question}
-              onRetry={onRetry}
-              loadingText="AI가 답변을 생성하고 있어요…"
-            />
+          {request ? (
+            <LectureAssistantMessage request={request} onRetry={onRetry} />
           ) : (
             <article className={questionStyles.questionMessage}>
               <div className={questionStyles.selectedPassage}>

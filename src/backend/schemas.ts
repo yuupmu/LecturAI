@@ -459,6 +459,10 @@ export const LectureAssistantRequestInputSchema = z.discriminatedUnion("mode", [
     sourceItemIds: TranscriptSelectionContextSchema.shape.sourceItemIds,
     startSequence: TranscriptSelectionContextSchema.shape.startSequence,
     endSequence: TranscriptSelectionContextSchema.shape.endSequence,
+    kind: TranscriptSelectionContextSchema.shape.kind,
+    targetLanguage: TranscriptSelectionContextSchema.shape.targetLanguage,
+    translationIds: TranscriptSelectionContextSchema.shape.translationIds,
+    intent: TranscriptSelectionContextSchema.shape.intent,
   }).refine(
     (selection) => selection.startSequence <= selection.endSequence,
     { message: "Selection startSequence must not exceed endSequence" },

@@ -540,19 +540,6 @@ async function phaseOneMain(): Promise<void> {
   await send("다음으로 해시 탐색을 보겠습니다. 해시 탐색은 해시 값을 사용합니다.");
   await send("해시 함수는 키를 저장 위치에 대응시킵니다.");
 
-  z.object({
-    accepted: z.literal(true),
-    queued: z.boolean(),
-    message: z.string(),
-  }).parse(await requestJson(
-    `${baseUrl}/api/session/${created.sessionId}/notes/generate`,
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ trigger: "manual" }),
-    },
-  ));
-
   let state: z.infer<typeof PhaseOneStateSchema> | null = null;
   const deadline = Date.now() + 300_000;
   while (Date.now() < deadline) {
@@ -612,7 +599,6 @@ async function phaseOneMain(): Promise<void> {
   const requiredLogs = [
     "transcript_saved",
     "note_schedule_started",
-    "note_manual_requested",
     "note_generation_started",
     "note_generation_context_built",
     "note_review_started",
