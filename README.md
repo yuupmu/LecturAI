@@ -41,6 +41,33 @@ npm run dev
 
 기본 주소는 `http://localhost:3000`입니다. 실제 마이크는 브라우저 권한이 필요합니다.
 
+## 단일 VM 운영 배포
+
+현재 메모리 세션 구조를 유지하는 데모/소규모 운영 환경은 Google Compute
+Engine 같은 단일 Linux VM에서 `compose.yaml`로 실행합니다. Compose는 Next.js
+앱과 자동 HTTPS 리버스 프록시인 Caddy를 각각 하나씩 실행합니다. 공개 OpenAI
+API 비용 오남용을 막기 위해 사이트 전체에 HTTP Basic 인증도 적용합니다.
+
+서버 환경변수는 저장소에 커밋하지 않고 다음 두 파일에 둡니다.
+
+```text
+/etc/lecturai/app.env     # .env.example과 같은 앱 설정
+/etc/lecturai/caddy.env   # deploy/caddy.env.example과 같은 HTTPS/접근 설정
+```
+
+도메인이 없을 때는 VM 고정 IPv4를 `203.0.113.10`처럼 하이픈으로 바꾼
+`lecturai.203-0-113-10.sslip.io`를 데모 주소로 사용할 수 있습니다. 이 주소는
+외부 무료 DNS 서비스에 의존하므로 정식 운영 전에는 소유 도메인으로 교체합니다.
+
+```bash
+sudo docker compose up -d --build
+sudo docker compose ps
+curl -u "$SITE_USERNAME:$SITE_PASSWORD" https://YOUR_SITE/api/health
+```
+
+컨테이너나 VM을 재시작하면 메모리의 강의 세션은 사라집니다. 여러 앱
+컨테이너를 동시에 실행하지 마세요.
+
 ## 현재 처리 흐름
 
 ```text
