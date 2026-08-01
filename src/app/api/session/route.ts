@@ -16,6 +16,11 @@ import {
   markSessionError,
 } from "@/backend/session-store";
 import { buildTranscriptionKeywords } from "@/backend/realtime/create-transcription-token";
+import {
+  BackendConfigurationError,
+  backendConfigurationErrorMessage,
+  getEnv,
+} from "@/backend/env";
 
 export const runtime = "nodejs";
 
@@ -43,6 +48,7 @@ function getMaterialKind(file: File): LectureMaterialKind | null {
 // Creates the in-memory session after extracting a structured slide map.
 export async function POST(request: Request) {
   let session: ReturnType<typeof createPreparingSession> | undefined;
+  let requestInputValidated = false;
   try {
     const formData = await request.formData();
     const material = [formData.get("material"), formData.get("pdf")].find(
@@ -53,6 +59,7 @@ export async function POST(request: Request) {
       instruction: formData.get("instruction"),
       language: formData.get("language"),
     });
+    requestInputValidated = true;
     if (input.material?.size === 0) {
       const log = logServerError(
         "api.session.material_validation",
@@ -83,6 +90,10 @@ export async function POST(request: Request) {
       );
     }
 
+    // Every lecture eventually needs OpenAI (Realtime, notes, or questions),
+    // so fail before creating session state when local configuration is absent.
+    getEnv();
+
     session = createPreparingSession(input.instruction, input.language);
     const analysis = input.material && materialKind
       ? await analyzeLectureMaterial(
@@ -107,17 +118,26 @@ export async function POST(request: Request) {
     });
   } catch (error) {
     if (session) markSessionError(session);
-    const isValidation = error instanceof z.ZodError;
+    const isRequestValidation =
+      !requestInputValidated && error instanceof z.ZodError;
+    const isConfiguration = error instanceof BackendConfigurationError;
     const log = session
       ? recordSessionError(session, "api.session.create", error)
       : logServerError("api.session.create", error);
     return NextResponse.json(
       {
-        error: isValidation ? "Invalid session input" : "Material analysis failed",
+        error: isRequestValidation
+          ? "Invalid session input"
+          : isConfiguration
+            ? backendConfigurationErrorMessage(error)
+            : "Material analysis failed",
+        ...(isConfiguration
+          ? { code: "SERVER_CONFIGURATION_ERROR" }
+          : {}),
         ...(session ? { sessionId: session.id } : {}),
         diagnostic: publicErrorDiagnostic(log),
       },
-      { status: isValidation ? 400 : 502 },
+      { status: isRequestValidation ? 400 : isConfiguration ? 503 : 502 },
     );
   }
 }

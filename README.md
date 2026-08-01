@@ -12,7 +12,12 @@ Node.js 20 이상에서 다음을 실행합니다.
 
 ```bash
 npm install
+cp .env.example .env.local
 ```
+
+생성된 `.env.local`에 실제 `OPENAI_API_KEY`를 입력합니다. 환경변수를 바꾼
+뒤에는 개발 서버를 다시 시작해야 합니다. `.env.local`은 Git에 커밋하지
+않습니다.
 
 `.env.local` 예시:
 

@@ -335,7 +335,16 @@ export default function LecturAIApp() {
       if (usingTestAudio) testAudio.stop();
       if (usingTestText) testText.stop();
       const errorLog = captureClientError("lecture.start", startError);
-      if (!created) {
+      const configurationFailure =
+        startError instanceof ApiError && startError.status === 503;
+      if (!created || configurationFailure) {
+        if (configurationFailure) {
+          realtime.disconnect();
+          setSessionId(null);
+          setSessionSeed(null);
+          setStartedAt(null);
+          setElapsedSeconds(0);
+        }
         stream?.getTracks().forEach((track) => track.stop());
         if (nextMaterialUrl) {
           URL.revokeObjectURL(nextMaterialUrl);
@@ -355,7 +364,9 @@ export default function LecturAIApp() {
             : permissionDenied
             ? "마이크 권한이 필요합니다. 브라우저 주소창의 마이크 권한을 허용한 뒤 다시 연결하세요."
             : startError instanceof ApiError
-              ? "자료를 분석하지 못했습니다. PDF/PPTX 파일과 API 설정을 확인한 뒤 다시 시도하세요."
+              ? configurationFailure
+                ? startError.message
+                : "자료를 분석하지 못했습니다. PDF/PPTX 파일과 API 설정을 확인한 뒤 다시 시도하세요."
               : "강의실을 열지 못했습니다. 마이크와 네트워크 상태를 확인해 주세요.",
         );
       } else {

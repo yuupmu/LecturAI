@@ -70,9 +70,41 @@ const EnvSchema = z.object({
 
 export type BackendEnv = z.infer<typeof EnvSchema>;
 
+export class BackendConfigurationError extends Error {
+  readonly invalidVariables: string[];
+
+  constructor(error: z.ZodError) {
+    const invalidVariables = Array.from(
+      new Set(
+        error.issues.flatMap((issue) =>
+          typeof issue.path[0] === "string" ? [issue.path[0]] : []
+        ),
+      ),
+    );
+    super("Backend environment configuration is invalid", { cause: error });
+    this.name = "BackendConfigurationError";
+    this.invalidVariables = invalidVariables;
+  }
+}
+
+export function backendConfigurationErrorMessage(
+  error: BackendConfigurationError,
+): string {
+  const variables = error.invalidVariables.length > 0
+    ? error.invalidVariables.join(", ")
+    : "환경 변수";
+  return `.env.local의 ${variables} 설정을 확인하고 개발 서버를 다시 시작해 주세요.`;
+}
+
 let cachedEnv: BackendEnv | undefined;
 
 export function getEnv(): BackendEnv {
-  cachedEnv ??= EnvSchema.parse(process.env);
+  if (cachedEnv) return cachedEnv;
+
+  const parsed = EnvSchema.safeParse(process.env);
+  if (!parsed.success) {
+    throw new BackendConfigurationError(parsed.error);
+  }
+  cachedEnv = parsed.data;
   return cachedEnv;
 }
