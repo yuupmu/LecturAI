@@ -5,9 +5,11 @@ import {
   publicErrorDiagnostic,
   recordSessionError,
 } from "@/backend/logs/error-log";
+import { runDueAutomaticNoteCheckpoint } from "@/backend/lecture/notes/cumulative-note-pipeline";
 import { getSession, publicSessionState } from "@/backend/session-store";
 
 export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
 
 const SessionParamsSchema = z.object({ sessionId: z.string().uuid() });
 
@@ -23,6 +25,7 @@ export async function GET(
     if (!session) {
       return NextResponse.json({ error: "Session not found" }, { status: 404 });
     }
+    runDueAutomaticNoteCheckpoint(session);
     return NextResponse.json(publicSessionState(session));
   } catch (error) {
     const log = session

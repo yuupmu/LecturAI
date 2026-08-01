@@ -60,7 +60,7 @@ const EnvSchema = z.object({
     (value) => typeof value === "string" && value.trim() === ""
       ? undefined
       : value,
-    z.string().trim().min(1).default("gpt-5-nano"),
+    z.string().trim().min(1).default("gpt-4.1-nano"),
   ),
   LECTURE_NOTE_INTERVAL_SECONDS: LectureNoteIntervalSchema,
   LECTURE_ENDING_GRACE_SECONDS: PositiveSecondsSchema.default(10),

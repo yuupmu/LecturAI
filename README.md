@@ -22,8 +22,8 @@ OPENAI_FAST_MODEL=gpt-4.1-nano
 OPENAI_SMART_MODEL=gpt-4.1-nano
 OPENAI_FINAL_NOTE_MODEL=gpt-4.1-nano
 OPENAI_MATERIAL_MODEL=gpt-4.1-nano
-# Google 번역 없이 자막을 바로 번역하는 최저 비용 모델
-OPENAI_TRANSLATION_MODEL=gpt-5-nano
+# Google 번역 없이 자막을 바로 번역하는 저지연 모델
+OPENAI_TRANSLATION_MODEL=gpt-4.1-nano
 LECTURE_NOTE_INTERVAL_SECONDS=120
 LECTURE_ENDING_GRACE_SECONDS=10
 LECTURE_INACTIVITY_SECONDS=600
@@ -77,7 +77,7 @@ npm run dev
 - `important`는 굵게, `exam`은 굵게와 시험 배지로 렌더링합니다. 모델이 직접 Markdown `**`를 생성하지 않습니다.
 - PDF 자동 페이지 판정은 새 필기 경로에서 사용하지 않습니다. PDF 뷰어의 이전/다음 버튼으로 사용자가 직접 페이지를 탐색할 수 있습니다.
 - 화면 상태 폴링은 기존 350ms 간격을 유지합니다.
-- 실시간 번역은 Google Cloud Translation과 별도 AI 보정 단계 없이 `gpt-5-nano`로 바로 생성합니다. 각 자막 번역은 독립적으로 실행되어 느린 요청이 다음 자막을 막지 않습니다.
+- 실시간 번역은 Google Cloud Translation과 별도 AI 보정 단계 없이 `gpt-4.1-nano`로 바로 생성합니다. 각 자막 번역은 독립적으로 실행되어 느린 요청이 다음 자막을 막지 않습니다.
 - 실시간 번역을 켜면 일반 질문과 번역문 선택 설명의 답변도 선택한 목표 언어로 생성합니다. 번역문을 드래그해 질문해도 번역 segment와 원본 `itemId`를 서버에서 검증하고, 원문 대본·자료를 근거로 답하므로 번역문이 새 사실 근거로 취급되지는 않습니다.
 - 질문은 요청 시점의 `lectureRevision`과 transcript sequence를 고정합니다. 최근 문맥은 항상 포함하고 질문 단어와 겹치는 자료·필기·과거 대본을 로컬 관련도로 선별하며, 외부 검색 도구를 전달하지 않습니다.
 - 교수자 스타일은 의미 있는 발화 12개 이후 처음 생성하고, 이후 의미 있는 발화 25개마다 별도 체인에서 갱신합니다. 사실 내용과 공격적 표현은 프로필에 저장하지 않습니다.

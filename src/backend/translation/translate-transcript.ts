@@ -41,7 +41,6 @@ export async function translateTranscript(
           { role: "system", content: TRANSLATION_SYSTEM_PROMPT },
           { role: "user", content: buildTranslationPrompt(input) },
         ],
-        reasoning: { effort: "minimal" },
         max_output_tokens: 240,
       },
       { signal: controller.signal },

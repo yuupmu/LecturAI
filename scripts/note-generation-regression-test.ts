@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import {
   requestNoteGeneration,
+  runDueAutomaticNoteCheckpoint,
   scheduleNextAutomaticNote,
   setAutomaticNoteGeneration,
   type NoteGenerationDependencies,
@@ -381,6 +382,53 @@ async function testServerTimerDispatch(): Promise<void> {
   cleanup(session);
 }
 
+async function testPollingRecoversDroppedTimerWithoutWaitingForModel(): Promise<void> {
+  const session = makeSession();
+  addTranscript(session, 1, "이진 탐색은 정렬된 데이터에서 사용합니다.");
+  addTranscript(session, 2, "목표값과 가운데 값을 비교합니다.");
+
+  let release!: () => void;
+  let started!: () => void;
+  const didStart = new Promise<void>((resolve) => { started = resolve; });
+  const gate = new Promise<void>((resolve) => { release = resolve; });
+  const deps = mockDependencies({
+    compose: async (current, context, baseRevision) => {
+      started();
+      await gate;
+      return fakeComposition(
+        current,
+        context.existingNote,
+        context.newTurnsToProcess,
+        baseRevision,
+      );
+    },
+  });
+
+  scheduleNextAutomaticNote(session, "mock_dropped_timer", deps);
+  assert.ok(session.noteGenerationTimer);
+  clearTimeout(session.noteGenerationTimer!);
+  session.noteGenerationTimer = null;
+  session.noteGeneration.nextScheduledAt = new Date(Date.now() - 1).toISOString();
+
+  const dispatchStartedAt = performance.now();
+  assert.equal(runDueAutomaticNoteCheckpoint(session, deps), true);
+  const dispatchDurationMs = performance.now() - dispatchStartedAt;
+  assert.ok(
+    dispatchDurationMs < 50,
+    `checkpoint dispatch should not await model work (${dispatchDurationMs}ms)`,
+  );
+  assert.equal(session.noteGeneration.status, "queued");
+
+  await didStart;
+  assert.equal(session.noteGeneration.status, "generating");
+  release();
+  await waitForNotes(session);
+  assert.equal(session.noteGeneration.lastProcessedSequence, 2);
+  assert.ok(session.noteGeneration.currentNote);
+  assert.ok(session.noteGeneration.nextScheduledAt);
+  cleanup(session);
+}
+
 async function testScheduledShortTurnIsReviewed(): Promise<void> {
   const session = makeSession();
   addTranscript(session, 1, "핵심 정의입니다.");
@@ -536,6 +584,7 @@ async function main(): Promise<void> {
   await testNegativeEmphasisIsNotPromoted();
   await testToggleAndResetStaleResult();
   await testServerTimerDispatch();
+  await testPollingRecoversDroppedTimerWithoutWaitingForModel();
   await testScheduledShortTurnIsReviewed();
   await testLateTranscriptIsNotDropped();
   await testFinalNoteAndDuplicateFinalization();

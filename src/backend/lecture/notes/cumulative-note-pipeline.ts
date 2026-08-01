@@ -505,13 +505,11 @@ export function scheduleNextAutomaticNote(
       session.noteGenerationEpoch !== epoch ||
       session.noteGeneration.nextScheduledAt !== nextScheduledAt
     ) return;
-    session.noteGenerationTimer = null;
-    session.noteGeneration.nextScheduledAt = null;
-    touchSession(session);
-    requestNoteGeneration(session, "scheduled", dependencies);
-    if (!session.noteGeneration.nextScheduledAt && timerCanRun(session)) {
-      scheduleNextAutomaticNote(session, "scheduled_checkpoint", dependencies);
-    }
+    runDueAutomaticNoteCheckpoint(
+      session,
+      dependencies,
+      new Date(nextScheduledAt).getTime(),
+    );
   }, delayMs);
   (timer as ReturnType<typeof setTimeout> & { unref?: () => void }).unref?.();
   session.noteGenerationTimer = timer;
@@ -531,6 +529,31 @@ export function scheduleNextAutomaticNote(
     durationMs: 0,
     reason,
   });
+}
+
+// Server timers are best-effort: hot reloads and request-scoped runtimes can
+// drop a timeout while the session and its scheduled timestamp still exist.
+// State polling calls this checkpoint so an overdue note is dispatched without
+// waiting for another transcript. Dispatch itself stays synchronous and the
+// model work continues on noteGenerationChain.
+export function runDueAutomaticNoteCheckpoint(
+  session: LectureSession,
+  dependencies: NoteGenerationDependencies = defaultDependencies,
+  now = Date.now(),
+): boolean {
+  if (!timerCanRun(session)) return false;
+  const scheduledAt = session.noteGeneration.nextScheduledAt;
+  if (!scheduledAt || new Date(scheduledAt).getTime() > now) return false;
+
+  if (session.noteGenerationTimer) clearTimeout(session.noteGenerationTimer);
+  session.noteGenerationTimer = null;
+  session.noteGeneration.nextScheduledAt = null;
+  touchSession(session);
+  const result = requestNoteGeneration(session, "scheduled", dependencies);
+  if (!session.noteGeneration.nextScheduledAt && timerCanRun(session)) {
+    scheduleNextAutomaticNote(session, "scheduled_checkpoint", dependencies);
+  }
+  return result.accepted;
 }
 
 export function startAutomaticNoteSchedule(session: LectureSession): void {
@@ -621,7 +644,9 @@ export function requestNoteGeneration(
     job.snapshotItemIds,
   );
   if (preview.newTurnsToProcess.length === 0) {
-    if (trigger === "scheduled") scheduleNextAutomaticNote(session, "no_new_transcript");
+    if (trigger === "scheduled") {
+      scheduleNextAutomaticNote(session, "no_new_transcript", dependencies);
+    }
     return { accepted: false, queued: false, message: "새로 정리할 수업 내용이 없습니다." };
   }
   queueState(session, job);

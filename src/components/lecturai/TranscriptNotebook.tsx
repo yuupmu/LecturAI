@@ -27,6 +27,7 @@ export function TranscriptNotebook({
   translationSettings,
   translations = [],
   embedded = false,
+  showUnderstandingButton = true,
   onStartUnderstanding,
   onDeferQuestion,
 }: {
@@ -35,6 +36,7 @@ export function TranscriptNotebook({
   translationSettings?: TranslationSettingsDto;
   translations?: LiveTranslationSegmentDto[];
   embedded?: boolean;
+  showUnderstandingButton?: boolean;
   onStartUnderstanding?: (selection?: TranscriptSelectionDto) => Promise<void>;
   onDeferQuestion?: (
     selection?: TranscriptSelectionDto,
@@ -298,7 +300,7 @@ export function TranscriptNotebook({
               : "원본 확정 대본"} · {transcripts.length}개 발화
           </span>
         </div>
-        {transcripts.length > 0 && onStartUnderstanding && (
+        {showUnderstandingButton && transcripts.length > 0 && onStartUnderstanding && (
           <button
             type="button"
             disabled={selectionBusy}
