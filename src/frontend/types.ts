@@ -437,6 +437,18 @@ export const UnderstandingBranchMessageDtoSchema = z.object({
 });
 
 export const UnderstandingRejoinPacketDtoSchema = z.object({
+  quickRejoin: z.object({
+    mustKnowNow: z.array(z.string()).max(3),
+    currentTopic: z.string(),
+    bridgeSentence: z.string(),
+    listenForNext: z.string(),
+  }),
+  detailedCatchUp: z.object({
+    branchSummary: z.string(),
+    missedLectureSummary: z.string(),
+    keyPoints: z.array(z.string()),
+  }),
+  missedItemIds: z.array(z.string()),
   understoodContent: z.array(z.string()),
   lectureProgress: z.array(z.string()),
   currentLecturePosition: z.string(),

@@ -21,9 +21,11 @@ import { MissedFlowControl } from "@/components/lecturai/MissedFlowControl";
 import { EndingCandidateBanner } from "@/components/lecturai/EndingCandidateBanner";
 import { LectureQuestionDock } from "@/components/lecturai/LectureQuestionDock";
 import { ParallelLecturePanel } from "@/components/lecturai/ParallelLecturePanel";
+import { SelectionExplanationModal } from "@/components/lecturai/SelectionExplanationModal";
 import {
   ApiError,
   askLectureQuestion,
+  askTranscriptSelection,
   cancelAutomaticEnding,
   checkDeferredQuestion,
   createDeferredQuestion,
@@ -59,6 +61,7 @@ import type {
   TranscriptSelectionDto,
   TranslationSettingsDto,
   TranslationTargetLanguageDto,
+  UnderstandingBranchDto,
   UiPhase,
   VerificationEventDto,
 } from "./types";
@@ -92,7 +95,23 @@ const PPTX_MIME_TYPE =
   "application/vnd.openxmlformats-officedocument.presentationml.presentation";
 
 const DEMO_MATERIAL_URL = "/demo/binary_search_demo_slides.pdf";
-const DEMO_SCRIPT_URL = "/demo/binary_search_lecture_script_ko.txt";
+type DemoLanguage = "ko" | "en";
+
+const DEMO_SCRIPTS: Record<
+  DemoLanguage,
+  { url: string; filename: string; label: string }
+> = {
+  ko: {
+    url: "/demo/binary_search_lecture_script_ko.txt",
+    filename: "binary_search_lecture_script_ko.txt",
+    label: "한국어",
+  },
+  en: {
+    url: "/demo/binary_search_lecture_script_en.txt",
+    filename: "binary_search_lecture_script_en.txt",
+    label: "English",
+  },
+};
 
 function isSupportedMaterial(file: File): boolean {
   const filename = file.name.toLocaleLowerCase();
@@ -120,6 +139,7 @@ function isSupportedTestInput(file: File): boolean {
 export default function LecturAIApp() {
   const searchParams = useSearchParams();
   const [demoScriptFile, setDemoScriptFile] = useState<File | null>(null);
+  const [demoLanguage, setDemoLanguage] = useState<DemoLanguage | null>(null);
   const [demoLoading, setDemoLoading] = useState(false);
   const demoEnabled =
     process.env.NEXT_PUBLIC_ENABLE_DEMO_CONTROLS === "true" ||
@@ -388,14 +408,15 @@ export default function LecturAIApp() {
     }
   };
 
-  const loadDemoData = async () => {
+  const loadDemoData = async (selectedDemoLanguage: DemoLanguage) => {
     setDemoLoading(true);
     setSetupError(null);
     setSetupErrorLog(null);
     try {
+      const selectedScript = DEMO_SCRIPTS[selectedDemoLanguage];
       const [materialResponse, scriptResponse] = await Promise.all([
         fetch(DEMO_MATERIAL_URL, { cache: "no-store" }),
-        fetch(DEMO_SCRIPT_URL, { cache: "no-store" }),
+        fetch(selectedScript.url, { cache: "no-store" }),
       ]);
       if (!materialResponse.ok || !scriptResponse.ok) {
         throw new Error("Demo assets could not be loaded");
@@ -411,12 +432,13 @@ export default function LecturAIApp() {
       );
       const scriptFile = new File(
         [scriptText],
-        "binary_search_lecture_script_ko.txt",
+        selectedScript.filename,
         { type: "text/plain" },
       );
       setDemoScriptFile(scriptFile);
+      setDemoLanguage(selectedDemoLanguage);
       setTestAudioFile(scriptFile);
-      setLanguage("ko");
+      setLanguage(selectedDemoLanguage);
     } catch (error) {
       setSetupError("데모 자료를 불러오지 못했습니다. 정적 파일 경로를 확인해 주세요.");
       setSetupErrorLog(captureClientError("demo.load", error));
@@ -433,6 +455,7 @@ export default function LecturAIApp() {
         demoEnabled={demoEnabled}
         demoLoading={demoLoading}
         demoScriptFile={demoScriptFile}
+        demoLanguage={demoLanguage}
         testAudioFile={testAudioFile}
         instruction={instruction}
         language={language}
@@ -441,6 +464,7 @@ export default function LecturAIApp() {
         onFile={(file) => {
           setMaterialFile(file);
           setDemoScriptFile(null);
+          setDemoLanguage(null);
           setSetupError(null);
         }}
         onInvalidFile={() => {
@@ -463,7 +487,7 @@ export default function LecturAIApp() {
         onInstruction={setInstruction}
         onLanguage={setLanguage}
         onStart={() => void handleStart()}
-        onLoadDemo={() => void loadDemoData()}
+        onLoadDemo={(selectedDemoLanguage) => void loadDemoData(selectedDemoLanguage)}
       />
     );
   }
@@ -516,6 +540,7 @@ interface SetupDeskProps {
   demoEnabled: boolean;
   demoLoading: boolean;
   demoScriptFile: File | null;
+  demoLanguage: DemoLanguage | null;
   testAudioFile: File | null;
   instruction: string;
   language: string;
@@ -528,7 +553,7 @@ interface SetupDeskProps {
   onInstruction: (instruction: string) => void;
   onLanguage: (language: string) => void;
   onStart: () => void;
-  onLoadDemo: () => void;
+  onLoadDemo: (language: DemoLanguage) => void;
 }
 
 function SetupDesk({
@@ -537,6 +562,7 @@ function SetupDesk({
   demoEnabled,
   demoLoading,
   demoScriptFile,
+  demoLanguage,
   testAudioFile,
   instruction,
   language,
@@ -553,6 +579,7 @@ function SetupDesk({
 }: SetupDeskProps) {
   const inputRef = useRef<HTMLInputElement | null>(null);
   const [dragging, setDragging] = useState(false);
+  const [demoLanguageOpen, setDemoLanguageOpen] = useState(false);
   const busy = phase !== "setup";
   const progressIndex = phase === "requesting-permission" ? 0 : phase === "creating-session" ? 1 : -1;
 
@@ -601,7 +628,7 @@ function SetupDesk({
         ? "자료의 구조와 핵심 주장을 읽고 있습니다."
         : "자료 없는 강의의 기본 문맥을 준비하고 있습니다."
       : demoScriptFile
-        ? "이진 탐색 데모 자료와 한국어 강의 원고가 준비되었습니다."
+        ? `이진 탐색 데모 자료와 ${demoLanguage ? DEMO_SCRIPTS[demoLanguage].label : "선택한"} 강의 원고가 준비되었습니다.`
       : testAudioFile
         ? isSupportedTestText(testAudioFile)
           ? "TXT가 선택되었습니다. 시작하면 문장이 녹음 자막처럼 차례로 입력됩니다."
@@ -614,15 +641,46 @@ function SetupDesk({
       <header className={styles.setupHeader}>
         <span className={styles.eyebrow}>LECTURE MARGIN / 01</span>
         <div className={styles.setupHeaderRight}>
-          <button
-            className={styles.demoLoadButton}
-            type="button"
-            aria-label="이진 탐색 데모 데이터 불러오기"
-            onClick={onLoadDemo}
-            disabled={busy || demoLoading}
-          >
-            {demoLoading ? "DEMO LOADING…" : demoScriptFile ? "DEMO READY" : "DEMO DATA ↗"}
-          </button>
+          <div className={styles.demoLoadMenu}>
+            <button
+              className={styles.demoLoadButton}
+              type="button"
+              aria-label="이진 탐색 데모 대본 언어 선택"
+              aria-expanded={demoLanguageOpen}
+              aria-haspopup="menu"
+              onClick={() => setDemoLanguageOpen((open) => !open)}
+              disabled={busy || demoLoading}
+            >
+              {demoLoading ? "DEMO LOADING…" : demoScriptFile ? "DEMO READY · CHANGE" : "DEMO DATA ↗"}
+            </button>
+            {demoLanguageOpen && !busy && !demoLoading && (
+              <div className={styles.demoLanguageMenu} role="menu" aria-label="데모 대본 언어">
+                <span>TEST SCRIPT</span>
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={() => {
+                    setDemoLanguageOpen(false);
+                    onLoadDemo("ko");
+                  }}
+                >
+                  <strong>한국어</strong>
+                  <small>기본 기능 확인</small>
+                </button>
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={() => {
+                    setDemoLanguageOpen(false);
+                    onLoadDemo("en");
+                  }}
+                >
+                  <strong>English</strong>
+                  <small>영어 대본 처리 테스트</small>
+                </button>
+              </div>
+            )}
+          </div>
           <span className={styles.setupSignal}>MIC · CONTEXT · GROUNDING</span>
         </div>
       </header>
@@ -690,8 +748,10 @@ function SetupDesk({
             <div className={styles.demoAssetMeta}>
               <span>DEMO SCRIPT LOADED</span>
               <small>
-                {formatBytes(demoScriptFile.size)} · 한국어 강의 원고 · {" "}
-                <a href={DEMO_SCRIPT_URL} target="_blank" rel="noreferrer">원고 열기 ↗</a>
+                {formatBytes(demoScriptFile.size)} · {demoLanguage ? DEMO_SCRIPTS[demoLanguage].label : "선택한"} 강의 원고 · {" "}
+                {demoLanguage && (
+                  <a href={DEMO_SCRIPTS[demoLanguage].url} target="_blank" rel="noreferrer">원고 열기 ↗</a>
+                )}
               </small>
             </div>
           )}
@@ -855,6 +915,7 @@ function LiveWorkspace(props: LiveWorkspaceProps) {
   const [translationOverride, setTranslationOverride] =
     useState<TranslationSettingsDto | null>(null);
   const [parallelFeedback, setParallelFeedback] = useState<string | null>(null);
+  const [rejoinHighlightItemId, setRejoinHighlightItemId] = useState<string | null>(null);
   const [materialVisible, setMaterialVisible] = useState(true);
   const [assistantHeightVh, setAssistantHeightVh] = useState(46);
   const [resizingAssistant, setResizingAssistant] = useState(false);
@@ -863,6 +924,15 @@ function LiveWorkspace(props: LiveWorkspaceProps) {
     requestedAt: number;
     previousBranchCount: number;
   } | null>(null);
+  const [selectionQuestionModal, setSelectionQuestionModal] = useState<{
+    questionId: string | null;
+    selection: TranscriptSelectionDto;
+    anchor: { top: number; left: number };
+    error: string | null;
+  } | null>(null);
+  const [quickDeferState, setQuickDeferState] = useState<
+    "idle" | "saving" | "saved"
+  >("idle");
 
   const currentPage =
     sessionState?.currentSlidePage ?? slideMap.slides[0]?.page ?? null;
@@ -998,6 +1068,29 @@ function LiveWorkspace(props: LiveWorkspaceProps) {
     await askLectureQuestion(sessionId, question);
   };
 
+  const handleAskSelection = async (
+    selection: TranscriptSelectionDto,
+    anchor: { top: number; left: number },
+  ) => {
+    setSelectionQuestionModal({ questionId: null, selection, anchor, error: null });
+    try {
+      const result = await askTranscriptSelection(sessionId, selection);
+      setSelectionQuestionModal((current) => current
+        ? { ...current, questionId: result.questionId, error: null }
+        : current);
+    } catch (error) {
+      setSelectionQuestionModal((current) => current
+        ? {
+            ...current,
+            error: error instanceof ApiError
+              ? error.message
+              : "답변 요청을 보내지 못했습니다.",
+          }
+        : current);
+      throw error;
+    }
+  };
+
   const handleStartUnderstanding = async (selection?: TranscriptSelectionDto) => {
     setUnderstandingOpening({
       selectedText: selection?.selectedText ?? transcripts.at(-1)?.text ?? null,
@@ -1057,15 +1150,25 @@ function LiveWorkspace(props: LiveWorkspaceProps) {
     }
   };
 
-  const handleDeferQuestion = async (
-    selection?: TranscriptSelectionDto,
-    question?: string,
-  ) => {
+  const handleDeferQuestion = async () => {
     try {
-      const result = await createDeferredQuestion(sessionId, { selection, question });
+      const result = await createDeferredQuestion(sessionId, {});
       setParallelFeedback(result.message);
     } catch (error) {
       setParallelFeedback(error instanceof ApiError ? error.message : "질문을 맡기지 못했습니다.");
+      throw error;
+    }
+  };
+
+  const handleDeferCurrentTranscript = async () => {
+    if (quickDeferState === "saving") return;
+    setQuickDeferState("saving");
+    try {
+      await handleDeferQuestion();
+      setQuickDeferState("saved");
+      window.setTimeout(() => setQuickDeferState("idle"), 3_000);
+    } catch {
+      setQuickDeferState("idle");
     }
   };
 
@@ -1085,6 +1188,16 @@ function LiveWorkspace(props: LiveWorkspaceProps) {
     } catch (error) {
       setParallelFeedback(error instanceof ApiError ? error.message : "현재 수업으로 합류하지 못했습니다.");
     }
+  };
+
+  const handleResumeLecture = (branch: UnderstandingBranchDto) => {
+    const latest = transcripts.at(-1);
+    setMaterialVisible(false);
+    setRejoinHighlightItemId(latest?.itemId ?? null);
+    setParallelFeedback(
+      `현재 수업으로 합류했습니다. 현재 주제: ${branch.rejoinPacket?.quickRejoin.currentTopic ?? "최신 수업 위치"}`,
+    );
+    window.setTimeout(() => setRejoinHighlightItemId(null), 3_000);
   };
 
   const handleCheckDeferred = async (questionId: string) => {
@@ -1283,12 +1396,13 @@ function LiveWorkspace(props: LiveWorkspaceProps) {
                   translations={translations}
                   embedded
                   showUnderstandingButton={false}
+                  highlightItemId={rejoinHighlightItemId}
                   onStartUnderstanding={sessionFinalizing || sessionEnded
                     ? undefined
                     : handleStartUnderstanding}
-                  onDeferQuestion={sessionFinalizing || sessionEnded
+                  onAskSelection={sessionFinalizing || sessionEnded
                     ? undefined
-                    : handleDeferQuestion}
+                    : handleAskSelection}
                 />
               </div>
             )}
@@ -1331,12 +1445,13 @@ function LiveWorkspace(props: LiveWorkspaceProps) {
             translations={translations}
             embedded
             showUnderstandingButton={false}
+            highlightItemId={rejoinHighlightItemId}
             onStartUnderstanding={sessionFinalizing || sessionEnded
               ? undefined
               : handleStartUnderstanding}
-            onDeferQuestion={sessionFinalizing || sessionEnded
+            onAskSelection={sessionFinalizing || sessionEnded
               ? undefined
-              : handleDeferQuestion}
+              : handleAskSelection}
           />
         )}
         <div className={styles.supportPanel}>
@@ -1369,6 +1484,30 @@ function LiveWorkspace(props: LiveWorkspaceProps) {
               </div>
               <i aria-hidden="true">→</i>
             </button>
+            <button
+              className={styles.quickDeferButton}
+              type="button"
+              disabled={
+                transcripts.length === 0 ||
+                sessionFinalizing ||
+                sessionEnded ||
+                quickDeferState !== "idle"
+              }
+              onClick={() => void handleDeferCurrentTranscript()}
+            >
+              <span aria-hidden="true">⌛</span>
+              <div>
+                <strong>
+                  {quickDeferState === "saving"
+                    ? "현재 대본을 맡기고 있어요…"
+                    : quickDeferState === "saved"
+                      ? "수업 종료 후 답변할게요"
+                      : "질문 맡겨두기"}
+                </strong>
+                <small>현재 실시간 대본을 저장하고 수업 종료 후 답변받기</small>
+              </div>
+              <i aria-hidden="true">→</i>
+            </button>
           </div>
           <div className={styles.parallelLectureSlot}>
             <ParallelLecturePanel
@@ -1376,10 +1515,12 @@ function LiveWorkspace(props: LiveWorkspaceProps) {
               deferredQuestions={deferredQuestions}
               transcripts={transcripts}
               disabled={sessionFinalizing || sessionEnded}
+              sessionEnded={sessionEnded}
               feedback={parallelFeedback}
               openingInteraction={visibleUnderstandingOpening}
               onMessage={handleBranchMessage}
               onRejoin={handleRejoin}
+              onResumeLecture={handleResumeLecture}
               onCheckDeferred={handleCheckDeferred}
               onUpdateDeferred={handleUpdateDeferred}
               onExplainDeferred={handleExplainDeferred}
@@ -1420,6 +1561,22 @@ function LiveWorkspace(props: LiveWorkspaceProps) {
       {errorLog && <ErrorLogDetails log={errorLog} compact />}
 
       {review && phase === "ended" && <ReviewSheet review={review} />}
+
+      {selectionQuestionModal && (
+        <SelectionExplanationModal
+          question={questions.find(
+            (question) => question.id === selectionQuestionModal.questionId,
+          ) ?? null}
+          selectedText={selectionQuestionModal.selection.selectedText}
+          anchor={selectionQuestionModal.anchor}
+          error={selectionQuestionModal.error}
+          onRetry={() => void handleAskSelection(
+            selectionQuestionModal.selection,
+            selectionQuestionModal.anchor,
+          ).catch(() => undefined)}
+          onClose={() => setSelectionQuestionModal(null)}
+        />
+      )}
 
       {demoEnabled && (
         <DemoFallbackDrawer

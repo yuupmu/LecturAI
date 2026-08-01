@@ -7,9 +7,11 @@ import styles from "./LectureSupport.module.css";
 export function LectureQuestionMessage({
   question,
   onRetry,
+  loadingText,
 }: {
   question: LectureQuestionDto;
   onRetry: (question: LectureQuestionDto) => void;
+  loadingText?: string;
 }) {
   return (
     <article className={styles.questionMessage}>
@@ -35,7 +37,11 @@ export function LectureQuestionMessage({
       )}
       {(question.status === "queued" || question.status === "answering") && (
         <p className={styles.answering}>
-          {question.status === "queued" ? "답변 순서를 기다리고 있습니다." : "수업 내부 근거를 검토하고 있습니다."}
+          {loadingText ?? (
+            question.status === "queued"
+              ? "답변 순서를 기다리고 있습니다."
+              : "수업 내부 근거를 검토하고 있습니다."
+          )}
         </p>
       )}
       {question.status === "insufficient_context" && (

@@ -13,10 +13,12 @@ export function ParallelLecturePanel({
   deferredQuestions,
   transcripts,
   disabled,
+  sessionEnded,
   feedback,
   openingInteraction,
   onMessage,
   onRejoin,
+  onResumeLecture,
   onCheckDeferred,
   onUpdateDeferred,
   onExplainDeferred,
@@ -25,6 +27,7 @@ export function ParallelLecturePanel({
   deferredQuestions: DeferredQuestionDto[];
   transcripts: TranscriptDto[];
   disabled: boolean;
+  sessionEnded: boolean;
   feedback: string | null;
   openingInteraction?: {
     selectedText: string | null;
@@ -33,6 +36,7 @@ export function ParallelLecturePanel({
   } | null;
   onMessage: (branchId: string, message: string) => Promise<void>;
   onRejoin: (branchId: string) => Promise<void>;
+  onResumeLecture: (branch: UnderstandingBranchDto) => void;
   onCheckDeferred: (questionId: string) => Promise<void>;
   onUpdateDeferred: (
     questionId: string,
@@ -42,6 +46,7 @@ export function ParallelLecturePanel({
 }) {
   const [questionsOpen, setQuestionsOpen] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
+  const [dismissedRejoins, setDismissedRejoins] = useState<Set<string>>(() => new Set());
   const [message, setMessage] = useState("");
   const [actionBusy, setActionBusy] = useState<string | null>(null);
   const [now, setNow] = useState(() => Date.now());
@@ -52,14 +57,29 @@ export function ParallelLecturePanel({
     () => branches.filter((branch) => branch.status === "completed").slice().reverse(),
     [branches],
   );
-  const latestCompleted = completedBranches[0] ?? null;
-  const olderCompleted = activeBranch ? completedBranches : completedBranches.slice(1);
+  const newestCompleted = completedBranches[0] ?? null;
+  const latestCompleted = newestCompleted && !dismissedRejoins.has(newestCompleted.id)
+    ? newestCompleted
+    : null;
+  const olderCompleted = activeBranch
+    ? completedBranches
+    : latestCompleted
+      ? completedBranches.slice(1)
+      : completedBranches;
+
+  const archiveRejoin = (branchId: string) => {
+    setDismissedRejoins((current) => new Set(current).add(branchId));
+  };
 
   useEffect(() => {
     if (!activeBranch) return;
     const timer = window.setInterval(() => setNow(Date.now()), 1_000);
     return () => window.clearInterval(timer);
   }, [activeBranch]);
+
+  const questionsVisible = questionsOpen || (
+    sessionEnded && deferredQuestions.some((question) => question.status !== "resolved")
+  );
 
   const submitMessage = async (event: FormEvent) => {
     event.preventDefault();
@@ -132,14 +152,22 @@ export function ParallelLecturePanel({
           }}
         />
       ) : openingInteraction ? null : latestCompleted ? (
-        <RejoinCard branch={latestCompleted} />
+        <RejoinCard
+          branch={latestCompleted}
+          primary
+          onResume={() => {
+            archiveRejoin(latestCompleted.id);
+            onResumeLecture(latestCompleted);
+          }}
+          onSaveForLater={() => archiveRejoin(latestCompleted.id)}
+        />
       ) : (
         <p className={styles.idleCopy}>
           대본을 선택하거나 “방금 내용이 이해되지 않아요”를 눌러 개인 보충 설명을 열 수 있습니다.
         </p>
       )}
 
-      {questionsOpen && (
+      {questionsVisible && (
         <DeferredQuestionList
           questions={deferredQuestions}
           busy={actionBusy}
@@ -367,41 +395,68 @@ function DeferredQuestionList({
   );
 }
 
-function RejoinCard({ branch }: { branch: UnderstandingBranchDto }) {
+function RejoinCard({
+  branch,
+  primary = false,
+  onResume,
+  onSaveForLater,
+}: {
+  branch: UnderstandingBranchDto;
+  primary?: boolean;
+  onResume?: () => void;
+  onSaveForLater?: () => void;
+}) {
   const packet = branch.rejoinPacket;
   if (!packet) return null;
   return (
     <article className={styles.rejoinCard}>
       <div>
-        <strong>현재 수업으로 다시 합류하기</strong>
+        <strong>{primary ? "현재 수업으로 합류하기" : "지난 합류 기록"}</strong>
         {packet.fallback && <span>원본 기록 기반 fallback</span>}
       </div>
       <small>
         {formatClock(branch.startedAt)} → {branch.endedAt ? formatClock(branch.endedAt) : "--:--:--"}
         {` · #${branch.startedAtSequence}–#${branch.endedAtSequence ?? branch.startedAtSequence}`}
       </small>
-      <h4>당신이 확인한 내용</h4>
-      <ul>{packet.understoodContent.map((item) => <li key={item}>{item}</li>)}</ul>
-      <h4>그사이 수업에서 진행된 내용</h4>
-      <ul>{packet.lectureProgress.map((item) => <li key={item}>{item}</li>)}</ul>
-      <h4>현재 수업 위치</h4>
-      <p>{packet.currentLecturePosition}</p>
-      <h4>연결해서 이해하기</h4>
-      <p>{packet.connection}</p>
-      <h4>지금부터</h4>
-      <ul>{packet.listenFor.map((item) => <li key={item}>{item}</li>)}</ul>
-      {packet.fallback && (
-        <details>
-          <summary>합류 구간 원본 대본과 최신 필기</summary>
-          {packet.rawTranscript.length > 0
-            ? packet.rawTranscript.map((turn) => (
-                <p key={turn.itemId}>#{turn.sequence} {turn.text}</p>
-              ))
-            : <p>분기 중 새 발화가 없습니다.</p>}
-          {packet.currentNoteSnapshot && (
-            <p>최신 필기 · {packet.currentNoteSnapshot.title}</p>
-          )}
-        </details>
+      <div className={styles.quickRejoin}>
+        <span>QUICK REJOIN · 10초</span>
+        <h4>지금 반드시 알아야 할 내용</h4>
+        <ul>{packet.quickRejoin.mustKnowNow.map((item) => <li key={item}>{item}</li>)}</ul>
+        <h4>현재 수업</h4>
+        <p>{packet.quickRejoin.currentTopic}</p>
+        <h4>연결해서 이해하기</h4>
+        <p>{packet.quickRejoin.bridgeSentence}</p>
+        <h4>지금부터 들어야 할 내용</h4>
+        <p>{packet.quickRejoin.listenForNext}</p>
+      </div>
+      {primary && onResume && (
+        <button className={styles.resumeButton} type="button" onClick={onResume}>
+          현재 수업으로 합류
+        </button>
+      )}
+      <details className={styles.detailedCatchUp}>
+        <summary>놓친 내용 자세히 보기</summary>
+        <h4>개인 보충 설명에서 확인한 내용</h4>
+        <p>{packet.detailedCatchUp.branchSummary}</p>
+        <h4>분기 중 실제 수업에서 지나간 내용</h4>
+        <p>{packet.detailedCatchUp.missedLectureSummary}</p>
+        {packet.detailedCatchUp.keyPoints.length > 0 && (
+          <ul>{packet.detailedCatchUp.keyPoints.map((item) => <li key={item}>{item}</li>)}</ul>
+        )}
+        {packet.rawTranscript.length > 0 && (
+          <details>
+            <summary>관련 대본 구간</summary>
+            {packet.rawTranscript.map((turn) => (
+              <p key={turn.itemId}>#{turn.sequence} {turn.text}</p>
+            ))}
+          </details>
+        )}
+        {packet.currentNoteSnapshot && <p>최신 필기 · {packet.currentNoteSnapshot.title}</p>}
+      </details>
+      {primary && onSaveForLater && (
+        <button className={styles.saveForLater} type="button" onClick={onSaveForLater}>
+          수업 후 확인하기
+        </button>
       )}
     </article>
   );
@@ -412,7 +467,7 @@ function deferredStatusLabel(question: DeferredQuestionDto): string {
   return {
     pending: "아직 대기 중",
     explained_by_lecture: "수업에서 설명됨",
-    ai_explanation_available: "AI 설명 가능",
+    ai_explanation_available: question.lectureExplanation ? "수업 종료 후 AI 설명" : "AI 설명 가능",
     resolved: "사용자가 해결함",
     failed: "확인 실패",
   }[question.status];

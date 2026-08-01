@@ -257,7 +257,7 @@
 
 .selectionActions {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: minmax(0, 1fr);
   gap: 6px;
 }
 
@@ -277,7 +277,7 @@
 
 .modalBackdrop {
   position: fixed;
-  z-index: 90;
+  z-index: 1000;
   inset: 0;
   display: grid;
   place-items: center;
@@ -294,6 +294,26 @@
   border: 1px solid rgba(217, 255, 91, 0.34);
   background: #07111e;
   box-shadow: 0 24px 80px rgba(0, 0, 0, 0.55);
+}
+
+.floatingSelectionPopup {
+  position: fixed;
+  width: min(560px, calc(100vw - 24px));
+  max-height: min(620px, calc(100svh - 24px));
+  pointer-events: auto;
+  animation: selectionPopupEnter 140ms ease-out both;
+}
+
+.floatingPopupLayer {
+  position: fixed;
+  z-index: 300;
+  inset: 0;
+  pointer-events: none;
+}
+
+@keyframes selectionPopupEnter {
+  from { opacity: 0; transform: translateY(5px); }
+  to { opacity: 1; transform: translateY(0); }
 }
 
 .selectionModal > header {
@@ -318,6 +338,14 @@
   cursor: pointer;
   font-size: 17px;
 }
+
+.draggableModalHeader {
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+}
+
+.draggableModalHeader:active { cursor: grabbing; }
 
 .modalBody { padding: 16px; overflow-y: auto; }
 

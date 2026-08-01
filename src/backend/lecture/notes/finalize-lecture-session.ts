@@ -13,6 +13,10 @@ import {
   completePendingMissedFlowsWithFallback,
 } from "../missed-flow/missed-flow-pipeline";
 import {
+  finalizeDeferredQuestions,
+  type DeferredQuestionFinalizationDependencies,
+} from "../understanding/deferred-question-pipeline";
+import {
   clearAutomaticNoteSchedule,
   runFinalNoteGeneration,
   type NoteGenerationDependencies,
@@ -23,6 +27,7 @@ export interface FinalizationDependencies {
   generateReview?: (session: LectureSession) => Promise<Review>;
   absenceDependencies?: AbsenceDependencies;
   concurrentTaskTimeoutMs?: number;
+  deferredQuestionDependencies?: DeferredQuestionFinalizationDependencies;
 }
 
 export function finalizeLectureSession(
@@ -62,6 +67,10 @@ export function finalizeLectureSession(
         session,
         Promise.allSettled([session.questionChain, absencePromise]).then(() => undefined),
         dependencies.concurrentTaskTimeoutMs ?? 20_000,
+      );
+      await finalizeDeferredQuestions(
+        session,
+        dependencies.deferredQuestionDependencies,
       );
       session.review = await (dependencies.generateReview ?? generateReview)(session);
       session.status = "ended";

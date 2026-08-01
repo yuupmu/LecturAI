@@ -10,16 +10,20 @@ export function LectureNoteCard({ note }: { note: LectureNoteDto }) {
           {note.status === "final" ? "FINAL" : "LIVE"} · REV {String(note.revision).padStart(2, "0")}
         </span>
       </header>
-      {note.sections.map((section) => (
-        <section key={section.id} className={styles.noteSection}>
+      {note.sections.map((section, sectionIndex) => (
+        <section key={`${section.id}-${sectionIndex}`} className={styles.noteSection}>
           <h4>{section.heading}</h4>
           {section.layout === "steps" ? (
             <ol>
-              {section.items.map((item) => <NoteText key={item.id} item={item} />)}
+              {section.items.map((item, itemIndex) => (
+                <NoteText key={`${item.id}-${itemIndex}`} item={item} />
+              ))}
             </ol>
           ) : (
             <ul>
-              {section.items.map((item) => <NoteText key={item.id} item={item} />)}
+              {section.items.map((item, itemIndex) => (
+                <NoteText key={`${item.id}-${itemIndex}`} item={item} />
+              ))}
             </ul>
           )}
         </section>

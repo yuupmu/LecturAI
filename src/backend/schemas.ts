@@ -662,7 +662,25 @@ export const UnderstandingBranchMessageSchema = z.object({
   createdAt: z.string().datetime({ offset: true }),
 });
 
+export const UnderstandingQuickRejoinSchema = z.object({
+  mustKnowNow: z.array(z.string().trim().min(1).max(160)).max(3),
+  currentTopic: z.string().trim().min(1).max(200),
+  bridgeSentence: z.string().trim().min(1).max(240),
+  listenForNext: z.string().trim().min(1).max(200),
+});
+
+export const UnderstandingDetailedCatchUpSchema = z.object({
+  branchSummary: z.string().trim().min(1),
+  missedLectureSummary: z.string().trim().min(1),
+  keyPoints: z.array(z.string().trim().min(1)),
+});
+
 export const UnderstandingRejoinPacketSchema = z.object({
+  quickRejoin: UnderstandingQuickRejoinSchema,
+  detailedCatchUp: UnderstandingDetailedCatchUpSchema,
+  missedItemIds: z.array(z.string().min(1)),
+  // Legacy fields remain in the stored/API packet so completed records and
+  // older clients keep working while the UI moves to the two-layer shape.
   understoodContent: z.array(z.string().min(1)),
   lectureProgress: z.array(z.string().min(1)),
   currentLecturePosition: z.string().min(1),
@@ -681,11 +699,8 @@ export const UnderstandingRejoinPacketSchema = z.object({
 });
 
 export const UnderstandingRejoinDraftSchema = UnderstandingRejoinPacketSchema.pick({
-  understoodContent: true,
-  lectureProgress: true,
-  currentLecturePosition: true,
-  connection: true,
-  listenFor: true,
+  quickRejoin: true,
+  detailedCatchUp: true,
   sourceItemIds: true,
 });
 

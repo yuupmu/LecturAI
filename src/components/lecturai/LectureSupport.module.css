@@ -272,7 +272,7 @@
   .questionInput .historyButton { grid-column: 2; grid-row: 1; transform: translateY(49px); }
   .absenceControl { grid-template-columns: auto 1fr; }
   .absenceControl .absenceHistoryButton { grid-column: 1 / -1; min-height: 28px; }
-  .missedFlowControl { grid-template-columns: auto 1fr; }
+  .missedFlowControl { grid-template-columns: auto auto 1fr; }
   .missedFlowLatest { grid-column: 1 / -1; }
 }
 
@@ -282,5 +282,7 @@
   .endingBanner button { grid-column: 1 / -1; min-height: 34px; }
   .absenceControl > div:not(.absenceHistory) { display: none; }
   .missedFlowControl > div { display: none; }
+  .missedFlowControl { grid-template-columns: 1fr 1fr; }
+  .missedFlowControl > button:first-child,
   .missedFlowCard { right: 14px; bottom: 60px; }
 }

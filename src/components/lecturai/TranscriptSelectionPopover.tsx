@@ -15,7 +15,6 @@ export function TranscriptSelectionPopover({
   targetLanguage,
   pendingAction,
   onImmediate,
-  onDefer,
 }: {
   top: number;
   left: number;
@@ -23,9 +22,8 @@ export function TranscriptSelectionPopover({
   error: string | null;
   selectionKind: "original" | "translation";
   targetLanguage: TranslationTargetLanguageDto | null;
-  pendingAction: "immediate" | "defer" | null;
-  onImmediate: () => void;
-  onDefer: () => void;
+  pendingAction: "immediate" | null;
+  onImmediate: (anchor: { top: number; left: number }) => void;
 }) {
   const position = { top, left } satisfies CSSProperties;
   return (
@@ -45,18 +43,15 @@ export function TranscriptSelectionPopover({
         <button
           type="button"
           disabled={busy}
-          onMouseDown={(event) => event.preventDefault()}
-          onClick={onImmediate}
+          onPointerDown={(event) => {
+            if (event.button !== 0) return;
+            event.preventDefault();
+            event.stopPropagation();
+            const rect = event.currentTarget.getBoundingClientRect();
+            onImmediate({ top: rect.bottom + 8, left: rect.left });
+          }}
         >
-          {busy && pendingAction === "immediate" ? "여는 중…" : "지금 자세히 이해하기"}
-        </button>
-        <button
-          type="button"
-          disabled={busy}
-          onMouseDown={(event) => event.preventDefault()}
-          onClick={onDefer}
-        >
-          {busy && pendingAction === "defer" ? "맡기는 중…" : "질문만 맡겨두기"}
+          {busy && pendingAction === "immediate" ? "여는 중…" : "지금 물어보기"}
         </button>
       </div>
       {error && <small role="alert">{error}</small>}

@@ -1,0 +1,47 @@
+Today, we will look at Binary Search, one of the most fundamental search algorithms and one that appears very frequently on exams. The material on the screen is organized in English, but the core concepts are not difficult. Today, we will examine, in order, how it differs from linear search, the actual sequence in which it operates, and why the number of searches is greatly reduced.
+
+On the left side of the first screen is Linear Search. As the name suggests, linear search checks the data one item at a time from the beginning. For example, if we are looking for 42 in an array, it starts with the first value and compares each value in sequence until 42 appears. The data does not need to be sorted, and it has the advantage of being very simple to implement.
+
+However, if the value being searched for is at the very end or is not in the array at all, every value must be checked. If there are n items of data, close to n comparisons may be required in the worst case, so the time complexity is O(n). You can understand O(n) here as meaning that when the amount of data doubles, the amount that must be checked also roughly doubles.
+
+Binary Search on the right uses a different approach. Instead of checking items one by one from the beginning, it looks at the middle value first. It then determines whether the target value is greater than or less than the middle value and discards the entire half in which the target value cannot exist. In the next step, it looks at the middle of the remaining range and discards half again. Therefore, with each step, the range that must be searched quickly decreases from n to n/2 to n/4.
+
+However, Binary Search has an important prerequisite. The data must be sorted. If it is not sorted, the fact that the target value is greater than the middle value does not allow us to discard the left half. This condition must not be omitted when explaining Binary Search. First, remember the difference that Linear Search does not require sorting, while Binary Search requires sorted data.
+
+Now, let us look at How Binary Search Works on the second page. This time, we will follow the process of finding the target value 42 in an actual array. The array is sorted in ascending order as 3, 7, 12, 18, 21, 27, 31, 42, 55.
+
+In the first step, we check the middle value of the entire range. Here, the middle value is 21. Because the target value 42 is greater than 21, there is no longer any need to check 21 or the values to its left. Since the array is sorted, we know that the left side contains only values smaller than 42. Therefore, we discard the left half and keep only the right range.
+
+In the second step, we check the middle value of the remaining range again. This time, we look at 31. 31 is also smaller than the target value 42. Therefore, we can again exclude 31 and the values to its left. Now, only 42 and a very small range around it remain as candidates.
+
+In the third step, we check 42 in the remaining range and find the target value. This process can be summarized in one sentence: Compare, discard half, repeat. Compare with the middle value, discard the unnecessary half, and repeat the same process in the remaining range.
+
+Conversely, if the target value is smaller than the middle value, the right half can be discarded. If the target value is greater than the middle value, the left half can be discarded. We can determine which side to discard because the data is sorted.
+
+I will put the two points I just mentioned on the exam. First, the data must be sorted. Second, after comparing with the middle value, remove the half in which the target value cannot exist. Do not simply memorize the explanation that the middle value is checked; you must also be able to explain why half can be discarded. In a multiple-choice question, I may include an option that omits the sorting condition, and in a written-response question, I may ask you to explain these two steps in one or two sentences.
+
+Now, let us look at the third page, Why the Time Complexity Is O of log n. This slide explains mathematically why Binary Search is fast. The key point is that the number of candidates does not decrease one at a time but is cut in half each time.
+
+If there are initially n candidates, approximately n/2 remain after one comparison. After two comparisons, n/4 remain, and after three comparisons, n/8 remain. If only one candidate remains after k comparisons, we can write an equation stating that n divided by 2 to the power of k equals 1.
+
+Rearranging this equation gives 2 to the power of k equals n, and then k equals log base 2 of n. Here, k is the required number of comparisons. I will not give you complicated logarithm calculations. However, you must understand that the number of comparisons grows logarithmically because the range is reduced by half each time.
+
+For example, suppose there are 1,024 candidates. Since 1,024 is 2 to the 10th power, reducing the range by half about ten times allows us to reach a single candidate. This means that even when there are more than one thousand data items, only about ten comparisons are needed. This difference is why Binary Search becomes more advantageous as the amount of data grows.
+
+Therefore, the worst-case time complexity of Binary Search is O(n).
+
+That concludes the relationship between the search range and time complexity. Rather than memorizing only the calculation result, you should be able to explain with a diagram how the search space decreases from n to n/2 to n/4. On the exam, rather than making you directly perform complicated logarithm calculations, I will ask why the number of comparisons decreases so quickly.
+
+Now, let us look at the final page, When Binary Search Works. Binary Search is fast, but it is not always the best choice. The first thing to check, once again, is whether the data is sorted. If the search range is not sorted, the rule of eliminating half based on the middle value does not work at all.
+
+Sorting also has a cost. If the data is already sorted, Binary Search can be used immediately. However, if unsorted data must first be sorted for a single search, the sorting cost must also be considered. This slide presents a typical sorting cost of O(n log n). If the data is small and only one search is performed, scanning it once with Linear Search may be simpler and less expensive than sorting it and then using Binary Search.
+
+Conversely, the situation changes when searches are performed repeatedly on the same sorted data. Even if there is an initial sorting cost, the advantage of Binary Search becomes greater because later searches can be repeated quickly. Therefore, when choosing an algorithm, you should consider not only the speed of a single search but also whether the data is already sorted and how many searches will be performed.
+
+Let us also briefly look at Common Variants on the right. In an array where the same value appears multiple times, finding just any position may not be enough. To find the first occurrence, continue checking the left range even after finding the value. To find the last occurrence, continue checking the right range. These ideas are called first occurrence and last occurrence.
+
+Lower bound and upper bound are similar extensions. We will cover the exact implementation in the next class, but the key point is that Binary Search is not limited to finding a single value and can also be extended to find boundary positions.
+
+Today's lesson can be summarized in three sentences. The data must be sorted, compare with the middle value and discard the unnecessary half, and repeat this process in the remaining range. In particular, do not omit the sorting condition. This is something I will definitely check because it is easy to create an exam question by changing one option.
+
+That is all for today's class.

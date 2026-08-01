@@ -86,6 +86,13 @@
   border-left: 1px solid rgba(248, 243, 233, 0.11);
 }
 
+.rejoinHighlight {
+  border-left-color: var(--acid) !important;
+  background: rgba(217, 255, 91, 0.13);
+  outline: none;
+  animation: rejoinPulse 2.8s ease-out both;
+}
+
 .turnMeta {
   display: flex;
   gap: 8px;
@@ -484,6 +491,11 @@
 @keyframes translationPulse {
   0%, 100% { opacity: 0.35; transform: scaleX(0.35); }
   50% { opacity: 1; transform: scaleX(1); }
+}
+
+@keyframes rejoinPulse {
+  0%, 35% { background: rgba(217, 255, 91, 0.24); }
+  100% { background: transparent; }
 }
 
 @media (max-width: 760px) {
