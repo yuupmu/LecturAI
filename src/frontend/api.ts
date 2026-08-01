@@ -1,17 +1,39 @@
 import { z } from "zod";
 import {
+  AssistantRequestResponseDtoSchema,
+  AbsenceRequestResponseDtoSchema,
+  MissedFlowRequestResponseDtoSchema,
+  UnderstandingBranchResponseDtoSchema,
+  DeferredQuestionResponseDtoSchema,
   CreateSessionResponseSchema,
   RawLogsResponseDtoSchema,
+  NoteRequestResponseDtoSchema,
+  NoteSettingsResponseDtoSchema,
+  QuestionRequestResponseDtoSchema,
+  EndCancelResponseDtoSchema,
   RealtimeTokenDtoSchema,
   SessionStateDtoSchema,
   TranscriptResponseDtoSchema,
+  TranslationSettingsResponseDtoSchema,
   type CreateSessionResponse,
+  type AssistantRequestResponseDto,
+  type AbsenceRequestResponseDto,
+  type MissedFlowRequestResponseDto,
+  type UnderstandingBranchResponseDto,
+  type DeferredQuestionResponseDto,
   type RawLogsResponseDto,
+  type NoteRequestResponseDto,
+  type NoteSettingsResponseDto,
+  type QuestionRequestResponseDto,
+  type EndCancelResponseDto,
   type RealtimeTokenDto,
   type SessionStateDto,
   type TranscriptInputDto,
   type TranscriptResponseDto,
+  type TranslationSettingsResponseDto,
+  type TranslationTargetLanguageDto,
 } from "./types";
+import type { TranscriptSelectionDto } from "./types";
 
 // ApiError retains status and the unmodified error payload for inline messages.
 export class ApiError extends Error {
@@ -98,6 +120,23 @@ export async function postTranscript(
   );
 }
 
+export async function setTranslationSettings(
+  sessionId: string,
+  input: {
+    enabled: boolean;
+    targetLanguage: TranslationTargetLanguageDto | null;
+  },
+): Promise<TranslationSettingsResponseDto> {
+  return parseResponse(
+    await fetch(`/api/session/${encodeURIComponent(sessionId)}/translation`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(input),
+    }),
+    TranslationSettingsResponseDtoSchema,
+  );
+}
+
 export async function getSessionState(
   sessionId: string,
   signal?: AbortSignal,
@@ -133,5 +172,243 @@ export async function resetSession(
       method: "POST",
     }),
     SessionStateDtoSchema,
+  );
+}
+
+export async function generateLectureNote(
+  sessionId: string,
+): Promise<NoteRequestResponseDto> {
+  return parseResponse(
+    await fetch(`/api/session/${encodeURIComponent(sessionId)}/notes/generate`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ trigger: "manual" }),
+    }),
+    NoteRequestResponseDtoSchema,
+  );
+}
+
+export async function setAutomaticLectureNotes(
+  sessionId: string,
+  enabled: boolean,
+): Promise<NoteSettingsResponseDto> {
+  return parseResponse(
+    await fetch(`/api/session/${encodeURIComponent(sessionId)}/notes/settings`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ enabled }),
+    }),
+    NoteSettingsResponseDtoSchema,
+  );
+}
+
+export async function askLectureAssistant(
+  sessionId: string,
+  question: string,
+): Promise<AssistantRequestResponseDto> {
+  return postLectureAssistant(sessionId, {
+    mode: "question",
+    question,
+  });
+}
+
+export async function askLectureQuestion(
+  sessionId: string,
+  question: string,
+): Promise<QuestionRequestResponseDto> {
+  return parseResponse(
+    await fetch(`/api/session/${encodeURIComponent(sessionId)}/questions`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ question }),
+    }),
+    QuestionRequestResponseDtoSchema,
+  );
+}
+
+export async function askTranscriptSelection(
+  sessionId: string,
+  selection: TranscriptSelectionDto,
+): Promise<QuestionRequestResponseDto> {
+  return parseResponse(
+    await fetch(`/api/session/${encodeURIComponent(sessionId)}/questions`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ selection }),
+    }),
+    QuestionRequestResponseDtoSchema,
+  );
+}
+
+export async function startLectureAbsence(
+  sessionId: string,
+): Promise<AbsenceRequestResponseDto> {
+  return parseResponse(
+    await fetch(`/api/session/${encodeURIComponent(sessionId)}/absence/start`, {
+      method: "POST",
+    }),
+    AbsenceRequestResponseDtoSchema,
+  );
+}
+
+export async function endLectureAbsence(
+  sessionId: string,
+): Promise<AbsenceRequestResponseDto> {
+  return parseResponse(
+    await fetch(`/api/session/${encodeURIComponent(sessionId)}/absence/end`, {
+      method: "POST",
+    }),
+    AbsenceRequestResponseDtoSchema,
+  );
+}
+
+export async function requestMissedFlowRecovery(
+  sessionId: string,
+): Promise<MissedFlowRequestResponseDto> {
+  return parseResponse(
+    await fetch(`/api/session/${encodeURIComponent(sessionId)}/missed-flow`, {
+      method: "POST",
+    }),
+    MissedFlowRequestResponseDtoSchema,
+  );
+}
+
+export async function startUnderstandingBranch(
+  sessionId: string,
+  selection?: TranscriptSelectionDto,
+): Promise<UnderstandingBranchResponseDto> {
+  return parseResponse(
+    await fetch(`/api/session/${encodeURIComponent(sessionId)}/understanding/branches`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(selection ? { selection } : {}),
+    }),
+    UnderstandingBranchResponseDtoSchema,
+  );
+}
+
+export async function sendUnderstandingBranchMessage(
+  sessionId: string,
+  branchId: string,
+  message: string,
+): Promise<UnderstandingBranchResponseDto> {
+  return parseResponse(
+    await fetch(
+      `/api/session/${encodeURIComponent(sessionId)}/understanding/branches/${encodeURIComponent(branchId)}/messages`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ message }),
+      },
+    ),
+    UnderstandingBranchResponseDtoSchema,
+  );
+}
+
+export async function rejoinUnderstandingBranch(
+  sessionId: string,
+  branchId: string,
+): Promise<UnderstandingBranchResponseDto> {
+  return parseResponse(
+    await fetch(
+      `/api/session/${encodeURIComponent(sessionId)}/understanding/branches/${encodeURIComponent(branchId)}/rejoin`,
+      { method: "POST" },
+    ),
+    UnderstandingBranchResponseDtoSchema,
+  );
+}
+
+export async function createDeferredQuestion(
+  sessionId: string,
+  input: { selection?: TranscriptSelectionDto; question?: string },
+): Promise<DeferredQuestionResponseDto> {
+  return parseResponse(
+    await fetch(`/api/session/${encodeURIComponent(sessionId)}/deferred-questions`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(input),
+    }),
+    DeferredQuestionResponseDtoSchema,
+  );
+}
+
+export async function checkDeferredQuestion(
+  sessionId: string,
+  questionId: string,
+): Promise<DeferredQuestionResponseDto> {
+  return parseResponse(
+    await fetch(
+      `/api/session/${encodeURIComponent(sessionId)}/deferred-questions/${encodeURIComponent(questionId)}/check`,
+      { method: "POST" },
+    ),
+    DeferredQuestionResponseDtoSchema,
+  );
+}
+
+export async function updateDeferredQuestion(
+  sessionId: string,
+  questionId: string,
+  action: "resolve" | "keep_waiting" | "still_confused",
+): Promise<DeferredQuestionResponseDto> {
+  return parseResponse(
+    await fetch(
+      `/api/session/${encodeURIComponent(sessionId)}/deferred-questions/${encodeURIComponent(questionId)}`,
+      {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action }),
+      },
+    ),
+    DeferredQuestionResponseDtoSchema,
+  );
+}
+
+export async function explainDeferredQuestion(
+  sessionId: string,
+  questionId: string,
+): Promise<UnderstandingBranchResponseDto> {
+  return parseResponse(
+    await fetch(
+      `/api/session/${encodeURIComponent(sessionId)}/deferred-questions/${encodeURIComponent(questionId)}/explain`,
+      { method: "POST" },
+    ),
+    UnderstandingBranchResponseDtoSchema,
+  );
+}
+
+export async function cancelAutomaticEnding(
+  sessionId: string,
+): Promise<EndCancelResponseDto> {
+  return parseResponse(
+    await fetch(`/api/session/${encodeURIComponent(sessionId)}/end/cancel`, {
+      method: "POST",
+    }),
+    EndCancelResponseDtoSchema,
+  );
+}
+
+export async function explainTranscriptSelection(
+  sessionId: string,
+  selection: TranscriptSelectionDto,
+): Promise<AssistantRequestResponseDto> {
+  return postLectureAssistant(sessionId, {
+    mode: "explain_selection",
+    ...selection,
+  });
+}
+
+async function postLectureAssistant(
+  sessionId: string,
+  payload:
+    | { mode: "question"; question: string }
+    | ({ mode: "explain_selection" } & TranscriptSelectionDto),
+): Promise<AssistantRequestResponseDto> {
+  return parseResponse(
+    await fetch(`/api/session/${encodeURIComponent(sessionId)}/assistant`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    }),
+    AssistantRequestResponseDtoSchema,
   );
 }

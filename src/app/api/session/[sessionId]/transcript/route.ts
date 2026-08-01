@@ -29,15 +29,22 @@ export async function POST(
     const result = await processTranscript(session, input);
     return NextResponse.json(result);
   } catch (error) {
+    const sessionClosed =
+      error instanceof Error &&
+      error.message === "SESSION_NOT_ACCEPTING_TRANSCRIPTS";
     const log = session
       ? recordSessionError(session, "api.session.transcript", error)
       : logServerError("api.session.transcript", error);
     return NextResponse.json(
       {
-        error: error instanceof z.ZodError ? "Invalid transcript" : "Transcript failed",
+        error: error instanceof z.ZodError
+          ? "Invalid transcript"
+          : sessionClosed
+            ? "Session is finalizing and no longer accepts transcripts"
+            : "Transcript failed",
         diagnostic: publicErrorDiagnostic(log),
       },
-      { status: error instanceof z.ZodError ? 400 : 500 },
+      { status: error instanceof z.ZodError ? 400 : sessionClosed ? 409 : 500 },
     );
   }
 }

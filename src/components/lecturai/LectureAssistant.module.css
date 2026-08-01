@@ -1,0 +1,336 @@
+.assistantDock {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  border-left: 1px solid rgba(248, 243, 233, 0.12);
+  background: #07111e;
+}
+
+.assistantDock > header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  min-height: 42px;
+  padding: 0 12px;
+  border-bottom: 1px solid rgba(248, 243, 233, 0.1);
+  font-family: var(--font-mono), monospace;
+}
+
+.assistantDock > header strong {
+  color: var(--acid);
+  font-size: 8px;
+  letter-spacing: 0.12em;
+}
+
+.assistantDock > header span {
+  color: #6e7d89;
+  font-size: 7px;
+}
+
+.messageList {
+  display: grid;
+  align-content: start;
+  gap: 10px;
+  min-height: 0;
+  padding: 12px;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(217, 255, 91, 0.22) transparent;
+}
+
+.emptyAssistant {
+  padding: 12px;
+  margin: 0;
+  border-left: 1px solid rgba(217, 255, 91, 0.28);
+  color: #82909b;
+  font-size: 10px;
+  line-height: 1.6;
+}
+
+.assistantMessage {
+  padding: 11px 12px;
+  border: 1px solid rgba(248, 243, 233, 0.11);
+  background: rgba(255, 255, 255, 0.025);
+}
+
+.assistantMessage > header {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.modeLabel,
+.statusLabel,
+.basisBadge {
+  font-family: var(--font-mono), monospace;
+  font-size: 7px;
+  letter-spacing: 0.06em;
+}
+
+.modeLabel { color: #83929d; }
+.statusLabel { color: var(--acid); }
+
+.questionText,
+.selectionQuote,
+.directAnswer,
+.explanation,
+.example p {
+  margin: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.questionText {
+  color: #eef2f4;
+  font-size: 11px;
+  line-height: 1.55;
+}
+
+.selectionQuote {
+  padding-left: 9px;
+  border-left: 2px solid var(--amber);
+  color: #cdd5da;
+  font-family: var(--font-display), serif;
+  font-size: 11px;
+  line-height: 1.55;
+}
+
+.answerBody {
+  display: grid;
+  gap: 9px;
+  padding-top: 10px;
+  margin-top: 10px;
+  border-top: 1px solid rgba(248, 243, 233, 0.09);
+}
+
+.answerBody h3 {
+  margin: 0;
+  color: #f2f5f6;
+  font-family: var(--font-display), serif;
+  font-size: 15px;
+}
+
+.directAnswer {
+  color: #e4e9ec;
+  font-size: 11px;
+  font-weight: 650;
+  line-height: 1.6;
+}
+
+.explanation,
+.example p {
+  color: #aeb9c1;
+  font-size: 10px;
+  line-height: 1.65;
+}
+
+.answerBody ul {
+  padding-left: 17px;
+  margin: 0;
+  color: #c7d0d5;
+  font-size: 10px;
+  line-height: 1.55;
+}
+
+.example {
+  padding: 9px;
+  border-left: 1px solid rgba(217, 255, 91, 0.32);
+  background: rgba(217, 255, 91, 0.025);
+}
+
+.example strong {
+  display: block;
+  margin-bottom: 5px;
+  color: var(--acid);
+  font-family: var(--font-mono), monospace;
+  font-size: 7px;
+}
+
+.answerFooter {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.basisBadge {
+  display: inline-flex;
+  width: fit-content;
+  padding: 4px 6px;
+  border: 1px solid rgba(217, 255, 91, 0.38);
+  color: var(--acid);
+}
+
+.textButton,
+.retryButton {
+  padding: 0;
+  color: #bfc9cf;
+  background: transparent;
+  cursor: pointer;
+  font-family: var(--font-mono), monospace;
+  font-size: 7px;
+}
+
+.loadingAnswer,
+.failedAnswer {
+  margin: 10px 0 0;
+  color: #93a1ab;
+  font-size: 9px;
+  line-height: 1.5;
+}
+
+.loadingAnswer::before {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  margin-right: 7px;
+  background: var(--acid);
+  content: "";
+  animation: assistantPulse 1.2s infinite ease-in-out;
+}
+
+.failedAnswer { color: #ffaaa3; }
+.retryButton { margin-top: 8px; color: var(--coral); }
+
+.questionForm {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  padding: 9px 12px 12px;
+  border-top: 1px solid rgba(248, 243, 233, 0.1);
+}
+
+.questionForm textarea {
+  min-width: 0;
+  min-height: 38px;
+  max-height: 100px;
+  padding: 9px 10px;
+  resize: vertical;
+  border: 1px solid rgba(248, 243, 233, 0.16);
+  outline: none;
+  color: #eef2f4;
+  background: #0a1724;
+  font: 10px/1.45 var(--font-ui), sans-serif;
+}
+
+.questionForm textarea:focus { border-color: var(--acid); }
+
+.questionForm button {
+  align-self: stretch;
+  min-width: 58px;
+  padding: 0 10px;
+  color: #07111e;
+  background: var(--acid);
+  cursor: pointer;
+  font-size: 9px;
+  font-weight: 750;
+}
+
+.questionForm button:disabled { cursor: not-allowed; opacity: 0.5; }
+
+.formError {
+  grid-column: 1 / -1;
+  margin: 0;
+  color: #ffaaa3;
+  font-size: 8px;
+}
+
+.selectionPopover {
+  position: fixed;
+  z-index: 80;
+  width: 252px;
+  padding: 12px;
+  border: 1px solid rgba(217, 255, 91, 0.46);
+  background: #06101b;
+  box-shadow: 0 14px 35px rgba(0, 0, 0, 0.42);
+}
+
+.selectionPopover p {
+  margin: 0 0 10px;
+  color: #d9e0e4;
+  font-size: 10px;
+}
+
+.selectionActions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.selectionActions button {
+  min-height: 32px;
+  border: 1px solid rgba(217, 255, 91, 0.34);
+  padding: 8px 10px;
+  color: #07111e;
+  background: var(--acid);
+  cursor: pointer;
+  font-size: 9px;
+  font-weight: 750;
+}
+
+.selectionActions button:disabled { cursor: wait; opacity: 0.55; }
+.selectionPopover small { display: block; margin-top: 7px; color: #ffaaa3; font-size: 8px; }
+
+.modalBackdrop {
+  position: fixed;
+  z-index: 90;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgba(2, 8, 15, 0.78);
+}
+
+.selectionModal {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  width: min(720px, 100%);
+  max-height: min(760px, calc(100svh - 48px));
+  overflow: hidden;
+  border: 1px solid rgba(217, 255, 91, 0.34);
+  background: #07111e;
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.55);
+}
+
+.selectionModal > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 16px;
+  border-bottom: 1px solid rgba(248, 243, 233, 0.1);
+}
+
+.selectionModal > header strong {
+  color: var(--acid);
+  font-family: var(--font-mono), monospace;
+  font-size: 9px;
+  letter-spacing: 0.09em;
+}
+
+.selectionModal > header button {
+  padding: 0;
+  color: #b5c0c7;
+  background: transparent;
+  cursor: pointer;
+  font-size: 17px;
+}
+
+.modalBody { padding: 16px; overflow-y: auto; }
+
+@keyframes assistantPulse { 50% { opacity: 0.24; } }
+
+@media (max-width: 760px) {
+  .selectionPopover {
+    right: 12px !important;
+    bottom: 12px;
+    left: 12px !important;
+    top: auto !important;
+    width: auto;
+  }
+
+  .modalBackdrop { padding: 12px; }
+}

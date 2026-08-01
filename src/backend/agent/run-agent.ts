@@ -24,12 +24,24 @@ export async function runLectureMonitorAgent(
   turn: AgentTurnInput,
 ): Promise<AgentActionName> {
   const control: ActionControl = { actionTaken: false, action: "none" };
-  const agent = createLectureMonitorAgent(session, control);
+  const agent = createLectureMonitorAgent(session, control, turn.newTranscript);
   const recentEvents = session.events.slice(-5);
+  const currentSlide = session.slideMap.slides.find(
+    (slide) => slide.page === session.currentSlidePage,
+  ) ?? null;
+  const currentLiveNote = session.liveNotes.find(
+    (note) => note.slidePage === session.currentSlidePage,
+  ) ?? null;
+  const recentEmphasisEvents = session.events
+    .filter((event) => event.type === "emphasis")
+    .slice(-5);
   const input = JSON.stringify({
     instruction: session.instruction,
     NEW_TRANSCRIPT: turn.newTranscript,
-    previousTranscriptsContextOnly: turn.previousTranscripts,
+    RECENT_TRANSCRIPTS: turn.previousTranscripts.slice(-5),
+    CURRENT_SLIDE: currentSlide,
+    CURRENT_LIVE_NOTE: currentLiveNote,
+    RECENT_EMPHASIS_EVENTS: recentEmphasisEvents,
     relatedSlides: turn.relatedSlides,
     recentEvents,
     sessionStatus: session.status,

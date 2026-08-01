@@ -10,7 +10,35 @@ import {
   useState,
 } from "react";
 import { useSearchParams } from "next/navigation";
-import { ApiError, createSession, postTranscript } from "./api";
+import { StructuredNotesPanel } from "@/components/lecturai/StructuredNotesPanel";
+import { TranscriptNotebook } from "@/components/lecturai/TranscriptNotebook";
+import { TranslationControl } from "@/components/lecturai/TranslationControl";
+import { LivePdfViewer } from "@/components/lecturai/LivePdfViewer";
+import { AbsenceToggle } from "@/components/lecturai/AbsenceToggle";
+import { MissedFlowControl } from "@/components/lecturai/MissedFlowControl";
+import { EndingCandidateBanner } from "@/components/lecturai/EndingCandidateBanner";
+import { LectureQuestionDock } from "@/components/lecturai/LectureQuestionDock";
+import { ParallelLecturePanel } from "@/components/lecturai/ParallelLecturePanel";
+import {
+  ApiError,
+  askLectureQuestion,
+  cancelAutomaticEnding,
+  checkDeferredQuestion,
+  createDeferredQuestion,
+  createSession,
+  endLectureAbsence,
+  explainDeferredQuestion,
+  generateLectureNote,
+  postTranscript,
+  rejoinUnderstandingBranch,
+  requestMissedFlowRecovery,
+  sendUnderstandingBranchMessage,
+  setAutomaticLectureNotes,
+  setTranslationSettings,
+  startUnderstandingBranch,
+  startLectureAbsence,
+  updateDeferredQuestion,
+} from "./api";
 import {
   captureClientError,
   type ClientErrorLog,
@@ -24,8 +52,11 @@ import type {
   SessionStateDto,
   SlideDto,
   SlideMapDto,
-  TranscriptAction,
+  TranscriptDto,
   TranscriptInputDto,
+  TranscriptSelectionDto,
+  TranslationSettingsDto,
+  TranslationTargetLanguageDto,
   UiPhase,
   VerificationEventDto,
 } from "./types";
@@ -34,21 +65,32 @@ import {
   type RealtimeFinalTranscript,
 } from "./useRealtimeTranscription";
 import { useSessionPolling } from "./useSessionPolling";
+import { useTestAudioInput } from "./useTestAudioInput";
+import { useTestTextInput } from "./useTestTextInput";
 
-const DEFAULT_INSTRUCTION = `이 자료를 기준으로 수업을 끝까지 모니터링해줘.
-명시적 강조와 자료-발화 불일치를 자동으로 감지하고,
-필요한 경우 외부 근거를 검색해 보강해.
-수업 종료를 감지하면 강조 내용 중심의 복습 문제를 만들어줘.`;
+const DEFAULT_INSTRUCTION = `이 자료와 수업 대본을 바탕으로 강의의 의미와 흐름을 계속 해석해줘.
+완성되지 않은 설명은 기다리고, 의미적 단원이 충분히 끝났을 때만
+자료와 대본에 근거한 복습용 구조화 필기를 만들어줘.`;
 
 const DEMO_PRESETS = [
-  ["정상 문장", "이진 탐색은 정렬된 배열에서 사용합니다."],
-  ["강조 문장", "정렬된 배열이라는 전제는 시험에 꼭 나옵니다."],
+  ["번역 · 한국어 원문", "이진 탐색은 정렬된 배열에서 탐색 범위를 절반씩 줄이는 알고리즘입니다."],
+  ["번역 · 영어 원문", "Binary search requires the array to be sorted before the search begins."],
+  ["번역 · 수식 보존", "The worst-case time complexity is O(log n), not O(n)."],
+  ["슬라이드 1 설명", "이진 탐색은 정렬된 배열에서 원하는 값을 찾는 알고리즘입니다."],
+  ["다음 슬라이드 전환", "이제 이진 탐색의 시간복잡도를 살펴보겠습니다. 탐색 범위를 매번 절반씩 줄입니다."],
+  ["필기용 예시", "전화번호부를 펼쳐 가운데부터 이름을 찾는 방식으로 생각하면 됩니다. 찾는 이름이 뒤쪽이면 앞 절반은 버릴 수 있습니다."],
+  ["강조 문맥", "이진 탐색은 정렬된 배열에서 사용하고, 탐색 범위를 매번 절반씩 줄입니다."],
+  ["문맥 참조 강조", "방금 말한 두 가지는 시험에 꼭 나오니 반드시 기억하세요."],
+  ["부정 강조", "이 내용은 중요하지 않고 시험에도 나오지 않습니다."],
   ["불일치 문장", "이진 탐색의 최악 시간복잡도는 O(n)입니다."],
-  ["종료 문장", "오늘 수업은 여기까지 하겠습니다."],
+  ["종료", "오늘 수업은 여기까지 하겠습니다."],
 ] as const;
 
 const PPTX_MIME_TYPE =
   "application/vnd.openxmlformats-officedocument.presentationml.presentation";
+
+const DEMO_MATERIAL_URL = "/demo/binary_search_demo_slides.pdf";
+const DEMO_SCRIPT_URL = "/demo/binary_search_lecture_script_ko.txt";
 
 function isSupportedMaterial(file: File): boolean {
   const filename = file.name.toLocaleLowerCase();
@@ -60,11 +102,30 @@ function isSupportedMaterial(file: File): boolean {
   );
 }
 
+function isSupportedTestAudio(file: File): boolean {
+  return file.type === "audio/mpeg" || file.name.toLocaleLowerCase().endsWith(".mp3");
+}
+
+function isSupportedTestText(file: File): boolean {
+  return file.type === "text/plain" || file.name.toLocaleLowerCase().endsWith(".txt");
+}
+
+function isSupportedTestInput(file: File): boolean {
+  return isSupportedTestAudio(file) || isSupportedTestText(file);
+}
+
 // LecturAIApp owns the intentionally local, single-session demo state.
 export default function LecturAIApp() {
   const searchParams = useSearchParams();
+  const [demoScriptFile, setDemoScriptFile] = useState<File | null>(null);
+  const [demoLoading, setDemoLoading] = useState(false);
+  const demoEnabled =
+    process.env.NEXT_PUBLIC_ENABLE_DEMO_CONTROLS === "true" ||
+    searchParams.get("debug") === "1" ||
+    demoScriptFile !== null;
   const [phase, setPhase] = useState<UiPhase>("setup");
   const [materialFile, setMaterialFile] = useState<File | null>(null);
+  const [testAudioFile, setTestAudioFile] = useState<File | null>(null);
   const [instruction, setInstruction] = useState(DEFAULT_INSTRUCTION);
   const [language, setLanguage] = useState("ko");
   const [setupError, setSetupError] = useState<string | null>(null);
@@ -76,8 +137,6 @@ export default function LecturAIApp() {
   const [pendingTranscriptIds, setPendingTranscriptIds] = useState<Set<string>>(
     () => new Set(),
   );
-  const [lastAction, setLastAction] = useState<TranscriptAction>("none");
-  const [noActionVisible, setNoActionVisible] = useState(false);
   const [transcriptWarning, setTranscriptWarning] = useState<string | null>(null);
   const [runtimeErrorLog, setRuntimeErrorLog] =
     useState<ClientErrorLog | null>(null);
@@ -85,7 +144,6 @@ export default function LecturAIApp() {
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const [demoOpen, setDemoOpen] = useState(false);
   const [demoError, setDemoError] = useState<string | null>(null);
-  const noActionTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const materialUrlRef = useRef<string | null>(null);
   const debugSequenceRef = useRef(100_000);
 
@@ -106,18 +164,7 @@ export default function LecturAIApp() {
       });
       setTranscriptWarning(null);
       try {
-        const result = await postTranscript(sessionId, transcript);
-        setLastAction(result.action);
-        if (result.action === "none") {
-          setNoActionVisible(true);
-          if (noActionTimerRef.current) clearTimeout(noActionTimerRef.current);
-          noActionTimerRef.current = setTimeout(
-            () => setNoActionVisible(false),
-            2_000,
-          );
-        } else {
-          setNoActionVisible(false);
-        }
+        await postTranscript(sessionId, transcript);
         return true;
       } catch (error) {
         setRuntimeErrorLog(captureClientError("transcript.submit", error));
@@ -146,17 +193,30 @@ export default function LecturAIApp() {
   const realtime = useRealtimeTranscription({
     onFinalTranscript: handleFinalTranscript,
   });
+  const testAudio = useTestAudioInput();
+  const handleTestTextSentence = useCallback(
+    async (text: string) => {
+      debugSequenceRef.current += 1;
+      return sendTranscript({
+        itemId: `txt-demo-${crypto.randomUUID()}`,
+        sequence: debugSequenceRef.current,
+        text,
+        source: "manual",
+        receivedAt: new Date().toISOString(),
+      });
+    },
+    [sendTranscript],
+  );
+  const testText = useTestTextInput({ onSentence: handleTestTextSentence });
   const disconnectRealtime = realtime.disconnect;
+  const stopTestAudio = testAudio.stop;
+  const stopTestText = testText.stop;
 
   const effectiveState = polledState;
   const slideMap = effectiveState?.slideMap ?? sessionSeed?.slideMap ?? null;
-  const lessonEnded =
-    effectiveState?.status === "ended" && effectiveState.review !== null;
+  const lessonEnded = effectiveState?.status === "ended";
+  const lessonFinalizing = effectiveState?.status === "finalizing";
   const effectivePhase: UiPhase = lessonEnded ? "ended" : phase;
-  const demoEnabled =
-    process.env.NEXT_PUBLIC_ENABLE_DEMO_CONTROLS === "true" ||
-    searchParams.get("debug") === "1";
-
   useEffect(() => {
     materialUrlRef.current = materialUrl;
   }, [materialUrl]);
@@ -164,15 +224,16 @@ export default function LecturAIApp() {
   useEffect(
     () => () => {
       if (materialUrlRef.current) URL.revokeObjectURL(materialUrlRef.current);
-      if (noActionTimerRef.current) clearTimeout(noActionTimerRef.current);
     },
     [],
   );
 
   useEffect(() => {
-    if (!lessonEnded) return;
+    if (!lessonEnded && !lessonFinalizing) return;
     disconnectRealtime();
-  }, [disconnectRealtime, lessonEnded]);
+    stopTestAudio();
+    stopTestText();
+  }, [disconnectRealtime, lessonEnded, lessonFinalizing, stopTestAudio, stopTestText]);
 
   useEffect(() => {
     if (!startedAt || effectivePhase !== "live") return;
@@ -193,6 +254,10 @@ export default function LecturAIApp() {
     let stream: MediaStream | null = null;
     let created: CreateSessionResponse | null = null;
     let nextMaterialUrl: string | null = null;
+    let startStage: "input" | "session" | "realtime" | "playback" = "input";
+    const selectedTestAudio = demoEnabled ? testAudioFile : null;
+    const usingTestText = selectedTestAudio !== null && isSupportedTestText(selectedTestAudio);
+    const usingTestAudio = selectedTestAudio !== null && !usingTestText;
     setSetupError(null);
     setSetupErrorLog(null);
     setTranscriptWarning(null);
@@ -200,7 +265,13 @@ export default function LecturAIApp() {
     setPhase("requesting-permission");
 
     try {
-      stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      if (usingTestText && selectedTestAudio) {
+        await testText.prepare(selectedTestAudio);
+      } else {
+        stream = selectedTestAudio
+          ? await testAudio.prepare(selectedTestAudio)
+          : await navigator.mediaDevices.getUserMedia({ audio: true });
+      }
       if (materialUrlRef.current) {
         URL.revokeObjectURL(materialUrlRef.current);
       }
@@ -212,6 +283,7 @@ export default function LecturAIApp() {
       }
 
       setPhase("creating-session");
+      startStage = "session";
       created = await createSession({
         material: materialFile,
         instruction: instruction.trim(),
@@ -223,9 +295,23 @@ export default function LecturAIApp() {
       setElapsedSeconds(0);
 
       setPhase("connecting-realtime");
-      await realtime.connect(created.sessionId, stream);
+      startStage = "realtime";
+      if (usingTestText) {
+        startStage = "playback";
+        testText.play();
+      } else {
+        if (!stream) throw new Error("실시간 입력 스트림이 준비되지 않았습니다.");
+        await realtime.connect(created.sessionId, stream);
+        if (usingTestAudio) {
+          startStage = "playback";
+          await testAudio.play();
+        }
+      }
       setPhase("live");
     } catch (startError) {
+      if (startStage === "playback") realtime.disconnect();
+      if (usingTestAudio) testAudio.stop();
+      if (usingTestText) testText.stop();
       const errorLog = captureClientError("lecture.start", startError);
       if (!created) {
         stream?.getTracks().forEach((track) => track.stop());
@@ -240,7 +326,11 @@ export default function LecturAIApp() {
           (startError.name === "NotAllowedError" ||
             startError.name === "PermissionDeniedError");
         setSetupError(
-          permissionDenied
+          usingTestText && startStage === "input"
+            ? "TXT 테스트 입력을 준비하지 못했습니다. 파일 내용과 인코딩을 확인해 주세요."
+            : usingTestAudio && startStage === "input"
+              ? "MP3 테스트 입력을 준비하지 못했습니다. 파일 형식과 브라우저 오디오 지원을 확인해 주세요."
+            : permissionDenied
             ? "마이크 권한이 필요합니다. 브라우저 주소창의 마이크 권한을 허용한 뒤 다시 연결하세요."
             : startError instanceof ApiError
               ? "자료를 분석하지 못했습니다. PDF/PPTX 파일과 API 설정을 확인한 뒤 다시 시도하세요."
@@ -250,7 +340,11 @@ export default function LecturAIApp() {
         setPhase("live");
         setRuntimeErrorLog(errorLog);
         setTranscriptWarning(
-          "실시간 음성 연결에 실패했습니다. 수업 세션은 유지되고 있습니다.",
+          usingTestText && startStage === "playback"
+            ? "TXT 테스트 입력을 순차 재생하지 못했습니다. 수업 세션은 유지되고 있습니다."
+            : usingTestAudio && startStage === "playback"
+              ? "MP3 테스트 입력을 실시간 연결에 재생하지 못했습니다. 수업 세션은 유지되고 있습니다."
+            : "실시간 음성 연결에 실패했습니다. 수업 세션은 유지되고 있습니다.",
         );
       }
     }
@@ -258,11 +352,11 @@ export default function LecturAIApp() {
 
   const returnToSetup = () => {
     realtime.disconnect();
+    testAudio.stop();
+    testText.stop();
     setSessionId(null);
     setSessionSeed(null);
     setPendingTranscriptIds(new Set());
-    setLastAction("none");
-    setNoActionVisible(false);
     setTranscriptWarning(null);
     setSetupErrorLog(null);
     setRuntimeErrorLog(null);
@@ -284,11 +378,48 @@ export default function LecturAIApp() {
       itemId: `debug-${crypto.randomUUID()}`,
       sequence: debugSequenceRef.current,
       text,
-      source: "typed",
+      source: "manual",
       receivedAt: new Date().toISOString(),
     });
     if (!sent) {
       setDemoError("데모 문장을 보내지 못했습니다. 세션 상태를 확인해 주세요.");
+    }
+  };
+
+  const loadDemoData = async () => {
+    setDemoLoading(true);
+    setSetupError(null);
+    setSetupErrorLog(null);
+    try {
+      const [materialResponse, scriptResponse] = await Promise.all([
+        fetch(DEMO_MATERIAL_URL, { cache: "no-store" }),
+        fetch(DEMO_SCRIPT_URL, { cache: "no-store" }),
+      ]);
+      if (!materialResponse.ok || !scriptResponse.ok) {
+        throw new Error("Demo assets could not be loaded");
+      }
+      const [materialBlob, scriptText] = await Promise.all([
+        materialResponse.blob(),
+        scriptResponse.text(),
+      ]);
+      setMaterialFile(
+        new File([materialBlob], "binary_search_demo_slides.pdf", {
+          type: "application/pdf",
+        }),
+      );
+      const scriptFile = new File(
+        [scriptText],
+        "binary_search_lecture_script_ko.txt",
+        { type: "text/plain" },
+      );
+      setDemoScriptFile(scriptFile);
+      setTestAudioFile(scriptFile);
+      setLanguage("ko");
+    } catch (error) {
+      setSetupError("데모 자료를 불러오지 못했습니다. 정적 파일 경로를 확인해 주세요.");
+      setSetupErrorLog(captureClientError("demo.load", error));
+    } finally {
+      setDemoLoading(false);
     }
   };
 
@@ -297,12 +428,17 @@ export default function LecturAIApp() {
       <SetupDesk
         phase={phase}
         file={materialFile}
+        demoEnabled={demoEnabled}
+        demoLoading={demoLoading}
+        demoScriptFile={demoScriptFile}
+        testAudioFile={testAudioFile}
         instruction={instruction}
         language={language}
         error={setupError}
         errorLog={setupErrorLog}
         onFile={(file) => {
           setMaterialFile(file);
+          setDemoScriptFile(null);
           setSetupError(null);
         }}
         onInvalidFile={() => {
@@ -312,9 +448,20 @@ export default function LecturAIApp() {
             captureClientError("material.validation", error),
           );
         }}
+        onTestAudioFile={(file) => {
+          setTestAudioFile(file);
+          setSetupError(null);
+          setSetupErrorLog(null);
+        }}
+        onInvalidTestAudio={() => {
+          const error = new Error("Only MP3 and TXT test inputs are supported");
+          setSetupError("개발자 테스트 입력은 MP3 또는 TXT 파일만 사용할 수 있습니다.");
+          setSetupErrorLog(captureClientError("test_audio.validation", error));
+        }}
         onInstruction={setInstruction}
         onLanguage={setLanguage}
         onStart={() => void handleStart()}
+        onLoadDemo={() => void loadDemoData()}
       />
     );
   }
@@ -334,14 +481,21 @@ export default function LecturAIApp() {
       sessionId={sessionId}
       fileName={materialFile?.name ?? "자료 없는 실시간 강의"}
       materialUrl={materialUrl}
+      materialIsPdf={
+        materialFile !== null &&
+        (materialFile.type === "application/pdf" ||
+          materialFile.name.toLocaleLowerCase().endsWith(".pdf"))
+      }
       slideMap={slideMap}
       sessionState={effectiveState}
       pollingDelayed={pollingDelayed}
       pendingCount={pendingTranscriptIds.size}
-      lastAction={lastAction}
-      noActionVisible={noActionVisible}
       elapsedSeconds={elapsedSeconds}
       realtime={realtime}
+      testAudio={testAudio}
+      testAudioFileName={testAudioFile && isSupportedTestAudio(testAudioFile) ? testAudioFile.name : null}
+      testText={testText}
+      testTextFileName={testAudioFile && isSupportedTestText(testAudioFile) ? testAudioFile.name : null}
       warning={transcriptWarning}
       errorLog={runtimeErrorLog ?? realtime.errorLog ?? pollingErrorLog}
       demoEnabled={demoEnabled}
@@ -357,29 +511,43 @@ export default function LecturAIApp() {
 interface SetupDeskProps {
   phase: UiPhase;
   file: File | null;
+  demoEnabled: boolean;
+  demoLoading: boolean;
+  demoScriptFile: File | null;
+  testAudioFile: File | null;
   instruction: string;
   language: string;
   error: string | null;
   errorLog: ClientErrorLog | null;
   onFile: (file: File | null) => void;
   onInvalidFile: () => void;
+  onTestAudioFile: (file: File | null) => void;
+  onInvalidTestAudio: () => void;
   onInstruction: (instruction: string) => void;
   onLanguage: (language: string) => void;
   onStart: () => void;
+  onLoadDemo: () => void;
 }
 
 function SetupDesk({
   phase,
   file,
+  demoEnabled,
+  demoLoading,
+  demoScriptFile,
+  testAudioFile,
   instruction,
   language,
   error,
   errorLog,
   onFile,
   onInvalidFile,
+  onTestAudioFile,
+  onInvalidTestAudio,
   onInstruction,
   onLanguage,
   onStart,
+  onLoadDemo,
 }: SetupDeskProps) {
   const inputRef = useRef<HTMLInputElement | null>(null);
   const [dragging, setDragging] = useState(false);
@@ -399,6 +567,14 @@ function SetupDesk({
     acceptFile(event.target.files?.[0] ?? null);
   };
 
+  const handleTestAudioInput = (event: ChangeEvent<HTMLInputElement>) => {
+    const candidate = event.target.files?.[0] ?? null;
+    event.target.value = "";
+    if (!candidate) return;
+    if (isSupportedTestInput(candidate)) onTestAudioFile(candidate);
+    else onInvalidTestAudio();
+  };
+
   const handleDrop = (event: DragEvent<HTMLDivElement>) => {
     event.preventDefault();
     setDragging(false);
@@ -413,19 +589,40 @@ function SetupDesk({
   };
 
   const statusText = phase === "requesting-permission"
-    ? "마이크를 사용할 수 있는지 확인하고 있습니다."
+    ? testAudioFile
+      ? isSupportedTestText(testAudioFile)
+        ? "TXT 원고를 문장 단위 실시간 입력으로 준비하고 있습니다."
+        : "MP3를 실시간 테스트 오디오 스트림으로 준비하고 있습니다."
+      : "마이크를 사용할 수 있는지 확인하고 있습니다."
     : phase === "creating-session"
       ? file
         ? "자료의 구조와 핵심 주장을 읽고 있습니다."
         : "자료 없는 강의의 기본 문맥을 준비하고 있습니다."
-      : "PDF나 PPTX를 올리거나, 자료 없이 바로 시작할 수 있습니다.";
+      : demoScriptFile
+        ? "이진 탐색 데모 자료와 한국어 강의 원고가 준비되었습니다."
+      : testAudioFile
+        ? isSupportedTestText(testAudioFile)
+          ? "TXT가 선택되었습니다. 시작하면 문장이 녹음 자막처럼 차례로 입력됩니다."
+          : "MP3가 선택되었습니다. 시작하면 마이크 대신 실시간 속도로 재생합니다."
+        : "PDF나 PPTX를 올리거나, 자료 없이 바로 시작할 수 있습니다.";
 
   return (
     <main className={styles.setupPage}>
       <div className={styles.setupRule} aria-hidden="true" />
       <header className={styles.setupHeader}>
         <span className={styles.eyebrow}>LECTURE MARGIN / 01</span>
-        <span className={styles.setupSignal}>MIC · CONTEXT · GROUNDING</span>
+        <div className={styles.setupHeaderRight}>
+          <button
+            className={styles.demoLoadButton}
+            type="button"
+            aria-label="이진 탐색 데모 데이터 불러오기"
+            onClick={onLoadDemo}
+            disabled={busy || demoLoading}
+          >
+            {demoLoading ? "DEMO LOADING…" : demoScriptFile ? "DEMO READY" : "DEMO DATA ↗"}
+          </button>
+          <span className={styles.setupSignal}>MIC · CONTEXT · GROUNDING</span>
+        </div>
       </header>
 
       <section className={styles.setupIntro}>
@@ -487,6 +684,15 @@ function SetupDesk({
               선택한 자료를 빼고 진행
             </button>
           )}
+          {demoScriptFile && (
+            <div className={styles.demoAssetMeta}>
+              <span>DEMO SCRIPT LOADED</span>
+              <small>
+                {formatBytes(demoScriptFile.size)} · 한국어 강의 원고 · {" "}
+                <a href={DEMO_SCRIPT_URL} target="_blank" rel="noreferrer">원고 열기 ↗</a>
+              </small>
+            </div>
+          )}
         </div>
 
         <div className={styles.instructionColumn}>
@@ -500,6 +706,37 @@ function SetupDesk({
             onChange={(event) => onInstruction(event.target.value)}
             disabled={busy}
           />
+          {demoEnabled && (
+            <div className={styles.testAudioPicker}>
+              <div>
+                <span>DEV INPUT · MP3 / TXT</span>
+                <small>MP3는 Realtime 전송 · TXT는 문장별 실시간 자막 입력</small>
+              </div>
+              <label>
+                <input
+                  className={styles.visuallyHidden}
+                  type="file"
+                  accept="audio/mpeg,.mp3,text/plain,.txt"
+                  onChange={handleTestAudioInput}
+                  disabled={busy}
+                />
+                <span>{testAudioFile ? "입력 교체" : "MP3/TXT 선택"}</span>
+              </label>
+              {testAudioFile && (
+                <div className={styles.testAudioSelection}>
+                  <span title={testAudioFile.name}>{testAudioFile.name}</span>
+                  <small>{formatBytes(testAudioFile.size)}</small>
+                  <button
+                    type="button"
+                    onClick={() => onTestAudioFile(null)}
+                    disabled={busy}
+                  >
+                    제거
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
           <div className={styles.setupControls}>
             <label htmlFor="language">
               <span>LANGUAGE</span>
@@ -526,7 +763,15 @@ function SetupDesk({
         </div>
 
         <aside className={styles.setupLedger} aria-label="연결 순서">
-          {["마이크 권한", file ? "자료 구조 읽기" : "기본 문맥 준비", "실시간 강의 연결"].map((label, index) => (
+          {[
+            testAudioFile
+              ? isSupportedTestText(testAudioFile)
+                ? "TXT 입력 준비"
+                : "MP3 입력 준비"
+              : "마이크 권한",
+            file ? "자료 구조 읽기" : "기본 문맥 준비",
+            "실시간 강의 연결",
+          ].map((label, index) => (
             <div
               key={label}
               className={index === progressIndex ? styles.ledgerActive : index < progressIndex ? styles.ledgerDone : ""}
@@ -553,14 +798,17 @@ interface LiveWorkspaceProps {
   sessionId: string;
   fileName: string;
   materialUrl: string | null;
+  materialIsPdf: boolean;
   slideMap: SlideMapDto;
   sessionState: SessionStateDto | null;
   pollingDelayed: boolean;
   pendingCount: number;
-  lastAction: TranscriptAction;
-  noActionVisible: boolean;
   elapsedSeconds: number;
   realtime: ReturnType<typeof useRealtimeTranscription>;
+  testAudio: ReturnType<typeof useTestAudioInput>;
+  testAudioFileName: string | null;
+  testText: ReturnType<typeof useTestTextInput>;
+  testTextFileName: string | null;
   warning: string | null;
   errorLog: ClientErrorLog | null;
   demoEnabled: boolean;
@@ -577,14 +825,17 @@ function LiveWorkspace(props: LiveWorkspaceProps) {
     sessionId,
     fileName,
     materialUrl,
+    materialIsPdf,
     slideMap,
     sessionState,
     pollingDelayed,
     pendingCount,
-    lastAction,
-    noActionVisible,
     elapsedSeconds,
     realtime,
+    testAudio,
+    testAudioFileName,
+    testText,
+    testTextFileName,
     warning,
     errorLog,
     demoEnabled,
@@ -594,66 +845,324 @@ function LiveWorkspace(props: LiveWorkspaceProps) {
     onDemoTranscript,
     onReturnToSetup,
   } = props;
+  const [noteRequestBusy, setNoteRequestBusy] = useState(false);
+  const [noteMessage, setNoteMessage] = useState<string | null>(null);
+  const [endingCancelBusy, setEndingCancelBusy] = useState(false);
+  const [translationBusy, setTranslationBusy] = useState(false);
+  const [translationFeedback, setTranslationFeedback] = useState<string | null>(null);
+  const [translationOverride, setTranslationOverride] =
+    useState<TranslationSettingsDto | null>(null);
+  const [parallelFeedback, setParallelFeedback] = useState<string | null>(null);
+  const [materialVisible, setMaterialVisible] = useState(true);
+  const [understandingOpening, setUnderstandingOpening] = useState<{
+    selectedText: string | null;
+    requestedAt: number;
+    previousBranchCount: number;
+  } | null>(null);
 
-  const currentPage = sessionState?.currentSlidePage ?? null;
+  const currentPage =
+    sessionState?.currentSlidePage ?? slideMap.slides[0]?.page ?? null;
   const currentSlide = slideMap.slides.find((slide) => slide.page === currentPage) ?? null;
-  const events = sessionState?.events ?? [];
   const transcripts = sessionState?.transcripts ?? [];
+  const polledTranslationSettings = sessionState?.translationSettings ?? {
+    enabled: false,
+    targetLanguage: null,
+    revision: 0,
+    updatedAt: 0,
+  };
+  const translationSettings = translationOverride &&
+      polledTranslationSettings.revision < translationOverride.revision
+    ? translationOverride
+    : polledTranslationSettings;
+  const translations = sessionState?.translations ?? [];
+  const slideResolution = sessionState?.slideResolution ?? null;
   const review = sessionState?.review ?? null;
-  const latestVerification = [...events]
-    .reverse()
-    .find((event): event is VerificationEventDto => event.type === "verification");
-  const searching = events.some(
-    (event) => event.type === "verification" && event.status === "searching",
+  const questions = sessionState?.questions ?? [];
+  const absenceSpans = sessionState?.absenceSpans ?? [];
+  const missedFlowRequests = sessionState?.missedFlowRequests ?? [];
+  const understandingBranches = sessionState?.understandingBranches ?? [];
+  const deferredQuestions = sessionState?.deferredQuestions ?? [];
+  const professorStyle = sessionState?.professorStyleProfile ?? null;
+  const activityState = sessionState?.activityState ?? {
+    currentActivity: "silence" as const,
+    monitoringStartedAt: null,
+    lastSpeechAt: null,
+    lastMeaningfulInstructionAt: null,
+    endingCandidate: null,
+    inactivityCandidate: null,
+  };
+  const noteGeneration = sessionState?.noteGeneration ?? {
+    enabled: true,
+    intervalSeconds: 120,
+    status: "idle" as const,
+    revision: 0,
+    lastProcessedSequence: 0,
+    processedItemIds: [],
+    lastGeneratedAt: null,
+    nextScheduledAt: null,
+    activeJobId: null,
+    activeTrigger: null,
+    pendingManualRequest: false,
+    lastError: null,
+    currentNote: null,
+    finalNote: null,
+  };
+  const noteActive = noteGeneration.status === "queued" ||
+    noteGeneration.status === "generating" ||
+    noteGeneration.status === "reviewing";
+  const processedNoteItemIds = new Set(noteGeneration.processedItemIds);
+  const hasNewTranscript = transcripts.some(
+    (turn) => !processedNoteItemIds.has(turn.itemId),
   );
+  const sessionFinalizing = sessionState?.status === "finalizing";
+  const sessionEnded = sessionState?.status === "ended";
+  const visibleUnderstandingOpening = understandingOpening &&
+      understandingBranches.length <= understandingOpening.previousBranchCount
+    ? understandingOpening
+    : null;
 
-  const micStatus = realtime.connectionPhase === "error"
-    ? "ERROR"
+  useEffect(() => {
+    if (!translationFeedback) return;
+    const timer = window.setTimeout(() => setTranslationFeedback(null), 4_000);
+    return () => window.clearTimeout(timer);
+  }, [translationFeedback]);
+
+  useEffect(() => {
+    if (!parallelFeedback) return;
+    const timer = window.setTimeout(() => setParallelFeedback(null), 5_000);
+    return () => window.clearTimeout(timer);
+  }, [parallelFeedback]);
+
+  const handleTranslationChange = async (
+    targetLanguage: TranslationTargetLanguageDto | null,
+  ) => {
+    if (translationBusy) return;
+    setTranslationBusy(true);
+    setTranslationFeedback(null);
+    try {
+      const response = await setTranslationSettings(sessionId, {
+        enabled: targetLanguage !== null,
+        targetLanguage,
+      });
+      setTranslationOverride(response.translationSettings);
+      setTranslationFeedback(
+        targetLanguage === "en"
+          ? "다음 발화부터 영어로 번역합니다."
+          : targetLanguage === "ko"
+            ? "다음 발화부터 한국어로 번역합니다."
+            : "실시간 번역을 껐습니다.",
+      );
+    } catch {
+      setTranslationFeedback(
+        "번역 설정을 바꾸지 못했습니다. 잠시 후 다시 시도해 주세요.",
+      );
+    } finally {
+      setTranslationBusy(false);
+    }
+  };
+
+  const handleGenerateNote = async () => {
+    setNoteRequestBusy(true);
+    setNoteMessage(null);
+    try {
+      const result = await generateLectureNote(sessionId);
+      setNoteMessage(result.message);
+    } catch (error) {
+      setNoteMessage(error instanceof ApiError ? error.message : "필기 요청에 실패했습니다.");
+    } finally {
+      setNoteRequestBusy(false);
+    }
+  };
+
+  const handleToggleAutomaticNotes = async (enabled: boolean) => {
+    setNoteRequestBusy(true);
+    setNoteMessage(null);
+    try {
+      const result = await setAutomaticLectureNotes(sessionId, enabled);
+      setNoteMessage(result.message);
+    } catch (error) {
+      setNoteMessage(error instanceof ApiError ? error.message : "자동 필기 설정을 바꾸지 못했습니다.");
+    } finally {
+      setNoteRequestBusy(false);
+    }
+  };
+
+  const handleQuestion = async (question: string) => {
+    await askLectureQuestion(sessionId, question);
+  };
+
+  const handleStartUnderstanding = async (selection?: TranscriptSelectionDto) => {
+    setUnderstandingOpening({
+      selectedText: selection?.selectedText ?? transcripts.at(-1)?.text ?? null,
+      requestedAt: Date.now(),
+      previousBranchCount: understandingBranches.length,
+    });
+    setParallelFeedback(null);
+    try {
+      const result = await startUnderstandingBranch(sessionId, selection);
+      if (!result.accepted) setUnderstandingOpening(null);
+      setParallelFeedback(result.message);
+    } catch (error) {
+      setUnderstandingOpening(null);
+      setParallelFeedback(error instanceof ApiError ? error.message : "이해 분기를 시작하지 못했습니다.");
+      throw error;
+    }
+  };
+
+  const handleDeferQuestion = async (
+    selection?: TranscriptSelectionDto,
+    question?: string,
+  ) => {
+    try {
+      const result = await createDeferredQuestion(sessionId, { selection, question });
+      setParallelFeedback(result.message);
+    } catch (error) {
+      setParallelFeedback(error instanceof ApiError ? error.message : "질문을 맡기지 못했습니다.");
+    }
+  };
+
+  const handleBranchMessage = async (branchId: string, message: string) => {
+    try {
+      const result = await sendUnderstandingBranchMessage(sessionId, branchId, message);
+      setParallelFeedback(result.message);
+    } catch (error) {
+      setParallelFeedback(error instanceof ApiError ? error.message : "추가 질문을 보내지 못했습니다.");
+    }
+  };
+
+  const handleRejoin = async (branchId: string) => {
+    try {
+      const result = await rejoinUnderstandingBranch(sessionId, branchId);
+      setParallelFeedback(result.message);
+    } catch (error) {
+      setParallelFeedback(error instanceof ApiError ? error.message : "현재 수업으로 합류하지 못했습니다.");
+    }
+  };
+
+  const handleCheckDeferred = async (questionId: string) => {
+    try {
+      const result = await checkDeferredQuestion(sessionId, questionId);
+      setParallelFeedback(result.message);
+    } catch (error) {
+      setParallelFeedback(error instanceof ApiError ? error.message : "설명 여부를 확인하지 못했습니다.");
+    }
+  };
+
+  const handleUpdateDeferred = async (
+    questionId: string,
+    action: "resolve" | "keep_waiting" | "still_confused",
+  ) => {
+    try {
+      const result = await updateDeferredQuestion(sessionId, questionId, action);
+      setParallelFeedback(result.message);
+    } catch (error) {
+      setParallelFeedback(error instanceof ApiError ? error.message : "질문 상태를 바꾸지 못했습니다.");
+    }
+  };
+
+  const handleExplainDeferred = async (questionId: string) => {
+    try {
+      const result = await explainDeferredQuestion(sessionId, questionId);
+      setParallelFeedback(result.message);
+    } catch (error) {
+      setParallelFeedback(error instanceof ApiError ? error.message : "AI 보충 설명을 열지 못했습니다.");
+    }
+  };
+
+  const handleStartAbsence = async () => {
+    await startLectureAbsence(sessionId);
+  };
+
+  const handleEndAbsence = async () => {
+    await endLectureAbsence(sessionId);
+  };
+
+  const handleMissedFlow = async () => {
+    await requestMissedFlowRecovery(sessionId);
+  };
+
+  const handleCancelEnding = async () => {
+    setEndingCancelBusy(true);
+    try {
+      await cancelAutomaticEnding(sessionId);
+    } finally {
+      setEndingCancelBusy(false);
+    }
+  };
+
+  const micStatus = testTextFileName
+    ? testText.phase === "playing"
+      ? "TXT LIVE"
+      : testText.phase.toUpperCase()
+    : testAudioFileName
+    ? testAudio.phase === "paused"
+      ? "PAUSED"
+      : testAudio.phase === "ended"
+        ? "FILE END"
+        : testAudio.phase === "playing"
+          ? "MP3 LIVE"
+          : testAudio.phase.toUpperCase()
+    : realtime.connectionPhase === "error"
+      ? "ERROR"
+      : realtime.speaking
+        ? "SPEECH"
+        : realtime.connectionPhase === "connecting"
+          ? "CONNECTING"
+          : realtime.connectionPhase === "idle"
+            ? "OFF"
+            : "LIVE";
+  const transcriptStatus = testTextFileName
+    ? testText.phase === "playing"
+      ? "STREAMING"
+      : testText.phase.toUpperCase()
     : realtime.speaking
-      ? "SPEECH"
-      : realtime.connectionPhase === "connecting"
-        ? "CONNECTING"
-        : realtime.connectionPhase === "idle"
-          ? "OFF"
-          : "LIVE";
-  const transcriptStatus = realtime.speaking
-    ? "DETECTING"
-    : realtime.connectionPhase === "listening"
-      ? "READY"
-      : realtime.connectionPhase.toUpperCase();
+      ? "DETECTING"
+      : realtime.connectionPhase === "listening"
+        ? "READY"
+        : realtime.connectionPhase.toUpperCase();
+  const visiblePartials = testTextFileName && testText.partialTranscript
+    ? new Map([["txt-demo-partial", testText.partialTranscript]])
+    : realtime.partialTranscripts;
   const agentStatus = phase === "ended"
     ? "ENDED"
+    : sessionFinalizing
+      ? "FINALIZING"
+    : activityState.endingCandidate
+      ? "ENDING?"
     : phase === "connecting-realtime"
       ? "CONNECTING"
     : pendingCount > 0
-      ? "COMPARING"
-      : "WATCHING";
-  const toolStatus = searching
-    ? "SEARCHING"
-    : latestVerification?.status === "complete"
-      ? "GROUNDED"
-      : latestVerification?.status === "failed"
-        ? "CHECK"
-        : lastAction === "mark_emphasis"
-          ? "MARKED"
-          : "QUIET";
+      ? "QUEUED"
+      : "CAPTURING";
+  const toolStatus = noteActive ? "COMPOSING" : "READY";
 
-  const statusSentence = pollingDelayed
+  const statusSentence = warning ?? (pollingDelayed
     ? "수업 상태 동기화가 잠시 지연되고 있습니다."
+    : sessionFinalizing
+      ? "남은 대본을 포함해 최종 필기와 복습지를 정리하고 있습니다."
+    : activityState.endingCandidate
+      ? activityState.endingCandidate.kind === "explicit"
+        ? "실제 종료 맥락을 감지했습니다. 계속 듣기를 누르거나 새 설명이 시작되면 취소됩니다."
+        : "10분 동안 수업다운 내용이 없어 종료 전 확인 중입니다."
     : phase === "ended"
       ? "수업이 끝났습니다. 복습 노트를 정리했습니다."
       : phase === "connecting-realtime"
-        ? "마이크와 강의실을 연결하고 있습니다."
-      : searching
-        ? "외부 근거를 찾고 있습니다."
+        ? testTextFileName
+          ? "TXT 원고를 문장 단위 입력으로 준비하고 있습니다."
+          : testAudioFileName
+            ? "MP3 테스트 입력과 강의실을 연결하고 있습니다."
+          : "마이크와 강의실을 연결하고 있습니다."
+      : noteActive
+        ? "기존 필기와 새 대본을 하나의 필기로 통합하고 있습니다."
         : pendingCount > 0
-          ? "방금 문장을 자료와 대조하고 있습니다."
-          : lastAction === "verify_claim_with_liner" &&
-              latestVerification?.status === "complete"
-            ? "근거 확인을 마쳤습니다."
+          ? "방금 자막을 저장하고 해석 순서에 추가했습니다."
+          : testTextFileName && testText.phase === "playing"
+            ? `TXT 원고를 문장별로 입력하고 있습니다. (${testText.completedSentences}/${testText.sentenceCount})`
+            : testTextFileName && testText.phase === "ended"
+              ? `TXT 원고 ${testText.sentenceCount}문장 입력을 마쳤습니다.`
           : realtime.connectionPhase === "error"
             ? "실시간 연결은 멈췄지만 수업 세션은 유지되고 있습니다."
-            : "강의의 맥락을 맞추고 있습니다.";
+            : "수업 대본을 저장하고 다음 필기 체크포인트를 기다리고 있습니다.");
 
   return (
     <main className={`${styles.workspace} ${phase === "ended" ? styles.workspaceEnded : ""}`}>
@@ -664,6 +1173,12 @@ function LiveWorkspace(props: LiveWorkspaceProps) {
         transcript={transcriptStatus}
         agent={agentStatus}
         tool={toolStatus}
+        translationSettings={translationSettings}
+        translationBusy={translationBusy}
+        translationFeedback={translationFeedback}
+        translationDisabled={sessionFinalizing || sessionEnded}
+        onTranslationChange={(targetLanguage) =>
+          void handleTranslationChange(targetLanguage)}
         statusSentence={statusSentence}
         sessionId={sessionId}
         onReturnToSetup={onReturnToSetup}
@@ -671,27 +1186,128 @@ function LiveWorkspace(props: LiveWorkspaceProps) {
 
       <div className={styles.lectureGrid}>
         <PageRail slides={slideMap.slides} currentPage={currentPage} />
-        <SlideContextSheet
-          slideMap={slideMap}
-          slide={currentSlide}
-          currentPage={currentPage}
-          materialUrl={materialUrl}
-          noMaterialMode={!materialUrl}
-        />
-        <AgentMargin
-          events={events}
-          noActionVisible={noActionVisible}
-          ended={phase === "ended"}
-        />
+        <section className={styles.primaryStage} aria-label="강의 자료와 실시간 대본">
+          <header className={styles.primaryStageToolbar}>
+            <div>
+              <strong>{materialVisible ? "PRESENTATION" : "LIVE TRANSCRIPT"}</strong>
+              <span>{materialVisible ? "강의 자료를 보고 있습니다" : "PPT를 가리고 대본을 보고 있습니다"}</span>
+            </div>
+            <button
+              type="button"
+              aria-pressed={!materialVisible}
+              onClick={() => setMaterialVisible((visible) => !visible)}
+            >
+              {materialVisible ? "PPT 숨기기 · 대본 보기" : "PPT 다시 보기"}
+            </button>
+          </header>
+          <div className={styles.primaryStageBody}>
+            {materialVisible ? (
+              materialUrl && materialIsPdf ? (
+                <div className={styles.slideStage}>
+                  <LivePdfViewer
+                    key={materialUrl}
+                    pdfUrl={materialUrl}
+                    currentPage={currentPage}
+                    totalPages={slideMap.slides.length}
+                    transitionReason={slideResolution?.reason}
+                  />
+                </div>
+              ) : (
+                <SlideContextSheet
+                  slideMap={slideMap}
+                  slide={currentSlide}
+                  currentPage={currentPage}
+                  materialUrl={materialUrl}
+                  noMaterialMode={!materialUrl}
+                />
+              )
+            ) : (
+              <div className={styles.promotedTranscript}>
+                <TranscriptNotebook
+                  transcripts={transcripts}
+                  partials={visiblePartials}
+                  translationSettings={translationSettings}
+                  translations={translations}
+                  embedded
+                  onStartUnderstanding={sessionFinalizing || sessionEnded
+                    ? undefined
+                    : handleStartUnderstanding}
+                  onDeferQuestion={sessionFinalizing || sessionEnded
+                    ? undefined
+                    : handleDeferQuestion}
+                />
+              </div>
+            )}
+          </div>
+        </section>
+        <div className={styles.marginStack}>
+          <StructuredNotesPanel
+            noteGeneration={noteGeneration}
+            sessionEnded={phase === "ended" || sessionFinalizing}
+            hasNewTranscript={hasNewTranscript}
+            message={noteMessage}
+            requestBusy={noteRequestBusy}
+            onGenerate={() => void handleGenerateNote()}
+            onToggle={(enabled) => void handleToggleAutomaticNotes(enabled)}
+          />
+        </div>
       </div>
 
-      <TranscriptRibbon
-        meterLevels={realtime.meterLevels}
-        speaking={realtime.speaking}
-        partials={realtime.partialTranscripts}
-        localFinals={realtime.recentFinals.map((item) => item.text)}
-        serverFinals={transcripts.slice(-3).map((item) => item.text)}
-        warning={realtime.warning ?? realtime.error ?? warning}
+      <div className={`${styles.assistantBand} ${!materialVisible ? styles.assistantBandTranscriptRaised : ""}`}>
+        {materialVisible && (
+          <TranscriptNotebook
+            transcripts={transcripts}
+            partials={visiblePartials}
+            translationSettings={translationSettings}
+            translations={translations}
+            embedded
+            onStartUnderstanding={sessionFinalizing || sessionEnded
+              ? undefined
+              : handleStartUnderstanding}
+            onDeferQuestion={sessionFinalizing || sessionEnded
+              ? undefined
+              : handleDeferQuestion}
+          />
+        )}
+        <div className={styles.supportPanel}>
+          <ParallelLecturePanel
+            branches={understandingBranches}
+            deferredQuestions={deferredQuestions}
+            transcripts={transcripts}
+            disabled={sessionFinalizing || sessionEnded}
+            feedback={parallelFeedback}
+            openingInteraction={visibleUnderstandingOpening}
+            onMessage={handleBranchMessage}
+            onRejoin={handleRejoin}
+            onCheckDeferred={handleCheckDeferred}
+            onUpdateDeferred={handleUpdateDeferred}
+            onExplainDeferred={handleExplainDeferred}
+          />
+          <MissedFlowControl
+            requests={missedFlowRequests}
+            disabled={sessionFinalizing || sessionEnded}
+            onRequest={handleMissedFlow}
+          />
+          <AbsenceToggle
+            spans={absenceSpans}
+            disabled={sessionFinalizing || sessionEnded}
+            onStart={handleStartAbsence}
+            onEnd={handleEndAbsence}
+          />
+          <LectureQuestionDock
+            questions={questions}
+            professorStyle={professorStyle}
+            disabled={sessionFinalizing || sessionEnded}
+            onQuestion={handleQuestion}
+            openRequestId={null}
+          />
+        </div>
+      </div>
+
+      <EndingCandidateBanner
+        activity={activityState}
+        busy={endingCancelBusy}
+        onCancel={handleCancelEnding}
       />
 
       <div className={styles.liveSentence} aria-live="polite">
@@ -723,6 +1339,11 @@ function SignalRail({
   transcript,
   agent,
   tool,
+  translationSettings,
+  translationBusy,
+  translationFeedback,
+  translationDisabled,
+  onTranslationChange,
   statusSentence,
   sessionId,
   onReturnToSetup,
@@ -733,6 +1354,11 @@ function SignalRail({
   transcript: string;
   agent: string;
   tool: string;
+  translationSettings: TranslationSettingsDto;
+  translationBusy: boolean;
+  translationFeedback: string | null;
+  translationDisabled: boolean;
+  onTranslationChange: (language: TranslationTargetLanguageDto | null) => void;
   statusSentence: string;
   sessionId: string;
   onReturnToSetup: () => void;
@@ -760,6 +1386,13 @@ function SignalRail({
           </div>
         ))}
       </div>
+      <TranslationControl
+        settings={translationSettings}
+        busy={translationBusy}
+        feedback={translationFeedback}
+        disabled={translationDisabled}
+        onChange={onTranslationChange}
+      />
       <button
         className={styles.rawButton}
         type="button"
@@ -850,8 +1483,8 @@ function SlideContextSheet({
               <div className={styles.noMaterialNotice}>
                 <span>NO SLIDE EVIDENCE</span>
                 <p>
-                  자료와의 충돌 검증 없이 발화의 명시적 강조와 수업 종료를
-                  모니터링합니다.
+                  빈 Material Knowledge로 시작해 누적 수업 대본만으로 강의
+                  단원과 구조화 필기를 해석합니다.
                 </p>
               </div>
             ) : null}
@@ -885,6 +1518,8 @@ function SlideContextSheet({
   );
 }
 
+// Deprecated compatibility renderer: intentionally disconnected from LiveWorkspace.
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 function AgentMargin({
   events,
   noActionVisible,
@@ -930,10 +1565,15 @@ function AgentMargin({
 function EmphasisNote({ event }: { event: EmphasisEventDto }) {
   return (
     <article className={styles.emphasisNote}>
-      <NoteMeta label="EMPHASIS" page={event.slidePage} time={event.createdAt} />
+      <NoteMeta
+        label={`EMPHASIS · ${event.emphasisKind.replaceAll("_", " ").toUpperCase()}`}
+        page={event.slidePage}
+        time={event.createdAt}
+      />
       <blockquote>{event.quote}</blockquote>
-      <p className={styles.noteConcept}>{event.concept}</p>
-      <small>교수가 여기에 밑줄을 그었습니다.</small>
+      <small className={styles.resolvedLabel}>정리된 중요 내용</small>
+      <p className={styles.noteConcept}>{event.resolvedConcept}</p>
+      <small>{event.reason}</small>
     </article>
   );
 }
@@ -974,7 +1614,7 @@ function VerificationNote({ event }: { event: VerificationEventDto }) {
       {event.status === "searching" ? (
         <div className={styles.scanner}>
           <span aria-hidden="true" />
-          <p>Liner에서 외부 근거를 찾고 있습니다.</p>
+          <p>OpenAI 웹 검색으로 외부 근거를 확인하고 있습니다.</p>
         </div>
       ) : (
         <div className={styles.verificationResult}>
@@ -992,7 +1632,7 @@ function VerificationNote({ event }: { event: VerificationEventDto }) {
               <span>0{index + 1}</span>
               <a href={source.url} target="_blank" rel="noreferrer">
                 <strong>{source.title}</strong>
-                <small>{source.hostname} ↗</small>
+                <small>{source.hostname ?? "외부 출처"} ↗</small>
               </a>
             </li>
           ))}
@@ -1002,37 +1642,81 @@ function VerificationNote({ event }: { event: VerificationEventDto }) {
   );
 }
 
-function NoteMeta({ label, page, time }: { label: string; page: number; time: string }) {
+function NoteMeta({ label, page, time }: { label: string; page: number | null; time: string }) {
   return (
     <header className={styles.noteMeta}>
       <strong>{label}</strong>
-      <span>PAGE {page} · {formatClock(time)}</span>
+      <span>PAGE {page ?? "—"} · {formatClock(time)}</span>
     </header>
   );
 }
 
+// Deprecated recent-only ribbon: TranscriptNotebook is the active transcript UI.
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 function TranscriptRibbon({
   meterLevels,
   speaking,
   partials,
   localFinals,
   serverFinals,
+  emphasisEvents,
   warning,
+  testAudio,
 }: {
   meterLevels: number[];
   speaking: boolean;
   partials: ReadonlyMap<string, string>;
   localFinals: string[];
-  serverFinals: string[];
+  serverFinals: TranscriptDto[];
+  emphasisEvents: EmphasisEventDto[];
   warning: string | null;
+  testAudio: {
+    fileName: string;
+    phase: ReturnType<typeof useTestAudioInput>["phase"];
+    currentTime: number;
+    duration: number;
+    error: string | null;
+    onTogglePause: () => void;
+  } | null;
 }) {
   const activePartial = Array.from(partials.entries()).at(-1)?.[1] ?? "";
-  const finals = localFinals.length > 0 ? localFinals : serverFinals;
+  const finals = serverFinals.length > 0
+    ? serverFinals
+    : localFinals.map((text, index) => ({
+        id: `local-${index}`,
+        itemId: `local-${index}`,
+        sequence: -1,
+        text,
+        source: "realtime" as const,
+        receivedAt: "",
+        startedAtMs: null,
+        endedAtMs: null,
+        matchedSlidePages: [],
+      }));
+  const currentFinal = finals.at(-1) ?? null;
   return (
     <section className={styles.transcriptRibbon} aria-label="실시간 자막">
-      <div className={`${styles.audioMeter} ${speaking ? styles.audioMeterSpeaking : ""}`}>
-        <span className={styles.liveLabel}>{speaking ? "SPEECH" : "LIVE"}</span>
-        <div aria-label="마이크 음량">
+      <div className={`${styles.audioMeter} ${speaking ? styles.audioMeterSpeaking : ""} ${testAudio ? styles.audioMeterTest : ""}`}>
+        {testAudio ? (
+          <div className={styles.testAudioTransport}>
+            <span>MP3 · {testAudio.phase.toUpperCase()}</span>
+            <strong title={testAudio.fileName}>{testAudio.fileName}</strong>
+            <div>
+              <time>{formatAudioTime(testAudio.currentTime)} / {formatAudioTime(testAudio.duration)}</time>
+              <button
+                type="button"
+                onClick={testAudio.onTogglePause}
+                disabled={testAudio.phase === "ended" || testAudio.phase === "error"}
+              >
+                {testAudio.phase === "paused" ? "재생" : "일시정지"}
+              </button>
+            </div>
+            {testAudio.error && <small>{testAudio.error}</small>}
+          </div>
+        ) : (
+          <span className={styles.liveLabel}>{speaking ? "SPEECH" : "LIVE"}</span>
+        )}
+        <div className={styles.meterBars} aria-label={testAudio ? "MP3 입력 음량" : "마이크 음량"}>
           {meterLevels.map((level, index) => (
             <i
               key={index}
@@ -1043,12 +1727,22 @@ function TranscriptRibbon({
       </div>
       <div className={styles.transcriptText} aria-live="polite">
         <div className={styles.recentTranscripts}>
-          {finals.slice(-3, -1).map((text, index) => (
-            <p key={`${text}-${index}`}>{text}</p>
+          {finals.slice(-3, -1).map((transcript) => (
+            <p key={transcript.itemId}>
+              <HighlightedTranscript
+                transcript={transcript}
+                emphasisEvents={emphasisEvents}
+              />
+            </p>
           ))}
         </div>
         <p className={styles.currentTranscript}>
-          {activePartial || finals.at(-1) || "말을 시작하면 이곳에 강의 자막이 흐릅니다."}
+          {activePartial ? activePartial : currentFinal ? (
+            <HighlightedTranscript
+              transcript={currentFinal}
+              emphasisEvents={emphasisEvents}
+            />
+          ) : "말을 시작하면 이곳에 강의 자막이 흐릅니다."}
           {activePartial && <span className={styles.caret} aria-hidden="true" />}
         </p>
         {warning && <small role="status">{warning}</small>}
@@ -1058,6 +1752,33 @@ function TranscriptRibbon({
         <strong>{String(partials.size).padStart(2, "0")}</strong>
       </div>
     </section>
+  );
+}
+
+function HighlightedTranscript({
+  transcript,
+  emphasisEvents,
+}: {
+  transcript: TranscriptDto;
+  emphasisEvents: EmphasisEventDto[];
+}) {
+  const event = [...emphasisEvents].reverse().find(
+    (candidate) =>
+      candidate.quote.length > 0 &&
+      transcript.text.includes(candidate.quote) &&
+      (candidate.sourceSequences.length === 0 ||
+        candidate.sourceSequences.includes(transcript.sequence)),
+  );
+  if (!event) return transcript.text;
+  const start = transcript.text.indexOf(event.quote);
+  if (start < 0) return transcript.text;
+  const end = start + event.quote.length;
+  return (
+    <>
+      {transcript.text.slice(0, start)}
+      <mark className={styles.transcriptEmphasis}>{transcript.text.slice(start, end)}</mark>
+      {transcript.text.slice(end)}
+    </>
   );
 }
 
@@ -1178,6 +1899,11 @@ function formatElapsed(totalSeconds: number): string {
   const minutes = Math.floor(totalSeconds / 60);
   const seconds = totalSeconds % 60;
   return `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
+}
+
+function formatAudioTime(totalSeconds: number): string {
+  if (!Number.isFinite(totalSeconds) || totalSeconds < 0) return "00:00";
+  return formatElapsed(Math.floor(totalSeconds));
 }
 
 function formatBytes(bytes: number): string {

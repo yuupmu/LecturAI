@@ -1,12 +1,11 @@
 import { tool } from "@openai/agents";
 import { appendRawLog } from "../logs/raw-log";
-import { generateReview } from "../review/generate-review";
+import { createExplicitEndingCandidate } from "../lecture/activity/lecture-activity-controller";
 import {
   FinishLessonArgsSchema,
   type ActionControl,
   type LectureSession,
 } from "../schemas";
-import { touchSession } from "../session-store";
 
 // Ends a lesson once and atomically exposes a three-question review.
 export function createFinishLessonTool(
@@ -30,21 +29,22 @@ export function createFinishLessonTool(
       control.actionTaken = true;
       control.action = "finish_lesson";
 
-      if (session.status === "ended") {
+      if (session.status === "ended" || session.status === "finalizing") {
         const result = { status: "duplicate_ignored" as const };
         appendRawLog(session, "tool_result", "finish_lesson", result);
         return result;
       }
 
-      const review = await generateReview(session);
-      session.review = review;
-      session.status = "ended";
-      touchSession(session);
+      createExplicitEndingCandidate(
+        session,
+        session.transcripts.slice(-6).map((turn) => turn.itemId),
+        "finish_lesson_tool_explicit_context",
+      );
 
       const result = {
-        status: "ended" as const,
+        status: "ending_candidate" as const,
         closingQuote: args.closingQuote,
-        review,
+        expiresAt: session.activityState.endingCandidate?.expiresAt ?? null,
       };
       appendRawLog(session, "tool_result", "finish_lesson", result);
       return result;

@@ -1,0 +1,510 @@
+.transcriptNotebook,
+.structuredNotes {
+  display: grid;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  background: #08131f;
+}
+
+.transcriptNotebook {
+  grid-template-rows: 42px minmax(0, 1fr);
+  margin: 0 var(--page-gutter);
+  border-top: 1px solid var(--line-dark);
+}
+
+.transcriptEmbedded {
+  margin: 0;
+}
+
+.transcriptTranslated > header {
+  border-bottom: 1px solid rgba(217, 255, 91, 0.12);
+}
+
+.transcriptNotebook > header,
+.structuredNotes > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-width: 0;
+  font-family: var(--font-mono), monospace;
+}
+
+.transcriptNotebook > header > div {
+  display: flex;
+  gap: 14px;
+  align-items: baseline;
+}
+
+.transcriptNotebook > header strong,
+.structuredNotes > header strong {
+  color: var(--acid);
+  font-size: 8px;
+  letter-spacing: 0.12em;
+}
+
+.transcriptNotebook > header span,
+.structuredNotes > header span {
+  color: #6e7d89;
+  font-size: 7px;
+  letter-spacing: 0.06em;
+}
+
+.transcriptNotebook > header button {
+  padding: 7px 10px;
+  color: #07111e;
+  background: var(--acid);
+  cursor: pointer;
+  font-size: 9px;
+  font-weight: 700;
+}
+
+.transcriptScroller,
+.notesScroller {
+  min-height: 0;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(217, 255, 91, 0.22) transparent;
+}
+
+.transcriptScroller {
+  padding: 8px 4px 18px;
+  user-select: text;
+}
+
+.transcriptScroller ol {
+  padding: 0;
+  margin: 0;
+  list-style: none;
+}
+
+.transcriptScroller li {
+  display: grid;
+  grid-template-columns: 90px minmax(0, 1fr);
+  gap: 14px;
+  padding: 8px 12px;
+  border-left: 1px solid rgba(248, 243, 233, 0.11);
+}
+
+.turnMeta {
+  display: flex;
+  gap: 8px;
+  color: #647482;
+  font-family: var(--font-mono), monospace;
+  font-size: 7px;
+}
+
+.originalTurn,
+.translationTurn {
+  min-width: 0;
+}
+
+.translatedTurn {
+  grid-template-columns: 90px minmax(0, 1fr) minmax(0, 1fr) !important;
+}
+
+.translationTurn {
+  padding-left: 16px;
+  border-left: 1px solid rgba(217, 255, 91, 0.18);
+}
+
+.translationTurn p {
+  color: #a5b2ba !important;
+}
+
+.latestTranslation p {
+  color: #f5f8f9 !important;
+  font-size: 13px !important;
+}
+
+.translationUnavailable,
+.translationProgress {
+  color: #61717e;
+  font-family: var(--font-mono), monospace;
+  font-size: 8px;
+}
+
+.translationProgress {
+  display: flex;
+  gap: 7px;
+  align-items: center;
+  color: #9babaf;
+}
+
+.translationProgress i {
+  width: 24px;
+  height: 1px;
+  background: var(--acid);
+  transform-origin: left;
+  animation: translationPulse 1s infinite ease-in-out;
+}
+
+.translationError {
+  color: #d49791 !important;
+  font-size: 9px !important;
+}
+
+.transcriptScroller li p,
+.partialTurns p {
+  margin: 0;
+  color: #d1d9df;
+  font-size: 11px;
+  line-height: 1.55;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.partialTurns {
+  padding: 8px 12px 8px 104px;
+  border-left: 2px solid rgba(217, 255, 91, 0.35);
+}
+
+.partialTurnsTranslated {
+  padding-right: calc(50% + 8px);
+}
+
+.partialTurns p {
+  color: #788894;
+  font-style: italic;
+}
+
+.emptyTranscript {
+  margin: 12px;
+  color: #71808c;
+  font-size: 10px;
+}
+
+.deferredBackdrop {
+  position: fixed;
+  z-index: 95;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: rgba(2, 8, 15, 0.72);
+}
+
+.deferredComposer {
+  display: grid;
+  gap: 13px;
+  width: min(460px, 100%);
+  padding: 16px;
+  color: #e5eaed;
+  border: 1px solid rgba(217, 255, 91, 0.34);
+  background: #07111e;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.46);
+}
+
+.deferredComposer header {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.deferredComposer header div,
+.deferredComposer label { display: grid; gap: 5px; }
+.deferredComposer strong { color: var(--acid); font-size: 12px; }
+.deferredComposer header span,
+.deferredComposer label span,
+.deferredComposer p { margin: 0; color: #8795a0; font-size: 9px; line-height: 1.5; }
+.deferredComposer header button { color: #b7c1c8; background: transparent; font-size: 19px; cursor: pointer; }
+.deferredComposer blockquote {
+  max-height: 116px;
+  padding: 9px 11px;
+  margin: 0;
+  overflow-y: auto;
+  color: #cbd4da;
+  border-left: 2px solid var(--acid);
+  background: rgba(255, 255, 255, 0.035);
+  font-size: 10px;
+  line-height: 1.55;
+}
+.deferredComposer input {
+  width: 100%;
+  border: 1px solid rgba(248, 243, 233, 0.18);
+  padding: 10px;
+  color: #eef1f3;
+  background: #0b1825;
+  font-size: 11px;
+}
+.deferredComposer > button {
+  border: 0;
+  padding: 10px 12px;
+  color: #07111e;
+  background: var(--acid);
+  cursor: pointer;
+  font-weight: 750;
+}
+.deferredComposer button:disabled { cursor: wait; opacity: 0.55; }
+.deferredComposer small { color: #ffaaa3; font-size: 8px; }
+
+.structuredNotes {
+  grid-template-rows: 42px minmax(0, 1fr);
+  height: 100%;
+}
+
+.structuredNotes > header {
+  border-bottom: 1px solid rgba(248, 243, 233, 0.1);
+}
+
+.notesScroller {
+  padding: 14px 6px 18px 0;
+}
+
+.noteControls {
+  display: grid;
+  gap: 10px;
+  padding: 0 0 16px 14px;
+  margin-bottom: 16px;
+  border-bottom: 1px solid rgba(248, 243, 233, 0.1);
+}
+
+.autoToggle,
+.generateNoteButton {
+  width: 100%;
+  border: 1px solid rgba(248, 243, 233, 0.18);
+  color: #aebac2;
+  background: rgba(255, 255, 255, 0.025);
+  cursor: pointer;
+  font-family: var(--font-mono), monospace;
+  font-size: 8px;
+  font-weight: 700;
+}
+
+.autoToggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 10px;
+  text-align: left;
+}
+
+.autoToggle > span {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #596976;
+}
+
+.autoToggleOn {
+  border-color: rgba(217, 255, 91, 0.35);
+  color: var(--acid);
+}
+
+.autoToggleOn > span {
+  background: var(--acid);
+  box-shadow: 0 0 8px rgba(217, 255, 91, 0.48);
+}
+
+.autoToggle:disabled,
+.generateNoteButton:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.noteTiming {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin: 0;
+}
+
+.noteTiming > div {
+  padding: 8px;
+  border-left: 1px solid rgba(248, 243, 233, 0.12);
+}
+
+.noteTiming dt,
+.noteRange span,
+.noteRange strong {
+  color: #70818d;
+  font-family: var(--font-mono), monospace;
+  font-size: 6px;
+  letter-spacing: 0.04em;
+}
+
+.noteTiming dd {
+  margin: 4px 0 0;
+  color: #d7e0e5;
+  font-family: var(--font-mono), monospace;
+  font-size: 9px;
+}
+
+.generateNoteButton {
+  padding: 10px;
+  border-color: var(--acid);
+  color: #07111e;
+  background: var(--acid);
+}
+
+.noteRange {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.noteRange strong {
+  color: var(--acid);
+}
+
+.noteMessage,
+.noteError {
+  margin: 0;
+  font-size: 8px;
+  line-height: 1.5;
+}
+
+.noteMessage { color: #9cabb4; }
+.noteError { color: #ff9f7f; }
+
+.finalNoteNotice {
+  display: grid;
+  gap: 3px;
+  padding: 9px 10px;
+  margin: 0 0 16px 14px;
+  border: 1px solid rgba(226, 177, 88, 0.38);
+  color: var(--amber);
+  font-family: var(--font-mono), monospace;
+}
+
+.finalNoteNotice strong { font-size: 8px; }
+.finalNoteNotice span { color: #9b8b70; font-size: 6px; }
+
+.noteCard {
+  padding: 0 0 19px 14px;
+  margin-bottom: 18px;
+  border-left: 2px solid rgba(217, 255, 91, 0.44);
+  border-bottom: 1px solid rgba(248, 243, 233, 0.08);
+}
+
+.noteCard > header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.noteCard h3 {
+  margin: 0;
+  color: #eff3f5;
+  font-family: var(--font-display), serif;
+  font-size: 18px;
+}
+
+.noteCard > header span,
+.openUnit span,
+.openUnit small,
+.noteGenerating {
+  color: #687985;
+  font-family: var(--font-mono), monospace;
+  font-size: 7px;
+}
+
+.noteSection {
+  margin-top: 14px;
+}
+
+.noteSection h4 {
+  margin: 0 0 7px;
+  color: #8796a1;
+  font-size: 9px;
+  letter-spacing: 0.08em;
+}
+
+.noteSection ul,
+.noteSection ol {
+  padding-left: 18px;
+  margin: 0;
+}
+
+.noteSection li {
+  padding: 3px 0;
+  color: #c9d2d8;
+  font-size: 10px;
+  line-height: 1.55;
+}
+
+.noteSection li strong {
+  color: #f1f5f7;
+}
+
+.examBadge {
+  display: inline-block;
+  padding: 1px 5px;
+  margin-left: 7px;
+  border: 1px solid var(--amber);
+  color: var(--amber);
+  font-family: var(--font-mono), monospace;
+  font-size: 6px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  vertical-align: 1px;
+}
+
+.emptyNotes,
+.openUnit,
+.noteGenerating {
+  padding: 14px;
+  border-left: 1px solid rgba(248, 243, 233, 0.12);
+}
+
+.emptyNotes span {
+  color: #74838e;
+  font-family: var(--font-mono), monospace;
+  font-size: 7px;
+}
+
+.emptyNotes p {
+  margin: 8px 0 0;
+  color: #8997a1;
+  font-size: 10px;
+  line-height: 1.55;
+}
+
+.openUnit {
+  display: grid;
+  gap: 6px;
+  margin-top: 10px;
+  border-left-color: var(--acid);
+}
+
+.openUnit span { color: var(--acid); }
+.openUnit strong { color: #cfd8de; font-size: 11px; }
+.noteGenerating { color: #a8b5bd; }
+.noteGenerating > span {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  margin-right: 7px;
+  background: var(--acid);
+  animation: notePulse 1.2s infinite ease-in-out;
+}
+
+@keyframes translationPulse {
+  0%, 100% { opacity: 0.35; transform: scaleX(0.35); }
+  50% { opacity: 1; transform: scaleX(1); }
+}
+
+@media (max-width: 760px) {
+  .translatedTurn {
+    grid-template-columns: 66px minmax(0, 1fr) !important;
+  }
+
+  .translatedTurn .translationTurn {
+    grid-column: 2;
+    padding-top: 7px;
+    padding-left: 0;
+    margin-top: 7px;
+    border-top: 1px solid rgba(217, 255, 91, 0.18);
+    border-left: 0;
+  }
+
+  .partialTurnsTranslated {
+    padding-right: 12px;
+  }
+}
+
+@keyframes notePulse {
+  50% { opacity: 0.25; }
+}

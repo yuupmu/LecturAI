@@ -1,158 +1,184 @@
 # LecturAI demo
 
-PDF/PPTX 강의 자료와 실시간 강의 자막을 함께 분석하는 로컬 해커톤 데모입니다. 자료 없이 음성 강의만 모니터링할 수도 있습니다. Next.js App Router 프론트엔드가 브라우저에서 OpenAI Realtime WebRTC 전사를 받고, 완성된 자막만 Node.js API Route에 전달합니다. 강조·자료와 발화의 충돌 검증·수업 종료 복습지를 별도 조작 없이 화면에 반영합니다.
+Next.js 16, React 19, TypeScript, Zod와 OpenAI를 사용하는 실시간 강의 필기 데모입니다. PDF/PPTX 자료 지식과 시간순 원본 대본을 보존하고, 2분 체크포인트마다 하나의 구조화 필기를 수정·병합·확장합니다.
 
-인증, DB, 큐, 워커, 앱 WebSocket/SSE 서버, 영구 파일 저장은 사용하지 않습니다. 모든 세션은 한 Node.js 프로세스의 `globalThis` 기반 `Map`에만 저장되므로 서버를 재시작하면 사라집니다.
+2단계에서는 질문 시점까지의 수업 내부 근거만 사용하는 질문창, 교수자 설명 스타일 프로필, 부재 시작·복귀 요약, 명시적 종료와 10분 비활동 종료 후보를 추가했습니다. 사실 오류 탐지, Claim Ledger, 웹 검색, 외부 지식 보충과 DB는 포함하지 않습니다. 종료 후보의 grace period가 끝나면 남은 대본을 반영한 `finalNote`를 만든 뒤 Review Sheet를 생성합니다.
 
-## 설치 및 실행
+세션은 한 Node.js 프로세스의 `globalThis` 기반 `Map`에만 저장되므로 서버 재시작 시 사라집니다. 인증, DB, 외부 큐, 영구 파일 저장, 앱 WebSocket/SSE는 사용하지 않습니다.
 
-Node.js 20 이상과 Node.js에 포함된 npm이 필요합니다.
+## 실행
+
+Node.js 20 이상에서 다음을 실행합니다.
 
 ```bash
 npm install
 ```
 
-`.env.local`을 만듭니다.
+`.env.local` 예시:
 
 ```dotenv
 OPENAI_API_KEY=sk-...
-LINER_API_KEY=...
-OPENAI_FAST_MODEL=gpt-5-mini
-OPENAI_SMART_MODEL=gpt-5.6
+OPENAI_FAST_MODEL=gpt-4.1-nano
+OPENAI_SMART_MODEL=gpt-4.1-nano
+OPENAI_FINAL_NOTE_MODEL=gpt-4.1-nano
+OPENAI_MATERIAL_MODEL=gpt-4.1-nano
+# Google 번역 없이 자막을 바로 번역하는 최저 비용 모델
+OPENAI_TRANSLATION_MODEL=gpt-5-nano
+LECTURE_NOTE_INTERVAL_SECONDS=120
+LECTURE_ENDING_GRACE_SECONDS=10
+LECTURE_INACTIVITY_SECONDS=600
+LECTURE_INACTIVITY_GRACE_SECONDS=30
 
-# 선택: 숨겨진 typed transcript 비상 패널 활성화
+# 선택: MP3/TXT/typed 데모 입력 표시
 NEXT_PUBLIC_ENABLE_DEMO_CONTROLS=false
 ```
+
+`OPENAI_SEARCH_MODEL`은 과거 코드 호환을 위해 환경 스키마에 남아 있을 수 있지만 1단계에서 웹 검색은 항상 fail-closed로 비활성화됩니다.
 
 ```bash
 npm run dev
 ```
 
-기본 주소는 `http://localhost:3000`입니다. 마이크는 브라우저 권한이 필요하며 로컬에서는 `localhost`로 접속해야 합니다. 타입 검사는 `npm run typecheck`, 린트는 `npm run lint`, 프로덕션 빌드는 `npm run build`로 실행합니다.
+기본 주소는 `http://localhost:3000`입니다. 실제 마이크는 브라우저 권한이 필요합니다.
 
-## 프론트엔드 흐름
+## 현재 처리 흐름
 
-- Setup Desk에서 선택적으로 PDF/PPTX 자료를 올리고 최초 지시문과 언어를 제출합니다. 자료를 올리지 않아도 시작할 수 있습니다.
-- 같은 클릭 흐름에서 마이크 권한, 자료 분석 또는 무자료 문맥 준비, Realtime client secret, WebRTC 연결, 상태 폴링이 자동으로 이어집니다.
-- Live Workspace는 현재 슬라이드 문맥, 실시간 delta, 확정 자막, Agent 이벤트와 Liner 근거를 표시합니다.
-- 수업 종료가 감지되면 WebRTC와 마이크가 자동으로 닫히고 세 문제의 Review Sheet가 펼쳐집니다.
-- 상단 `RAW`는 별도 창에서 `agent_stream`, `tool_call`, `tool_result`, `error` 원본 JSON을 커서 기반으로 보여줍니다.
+```text
+확정 자막 → immutable Transcript Log 저장
+                         ↓
+        2분 서버 타이머 / 수동 요청 / 종료
+                         ↓
+기존 currentNote + 직전 문맥 + 새 transcript + Material Knowledge
+                         ↓
+      하나의 누적 Structured Note 전체 갱신
+                         ↓
+      종료 시 finalNote → Review Sheet → ended
+```
 
-비상용 typed transcript 패널은 기본적으로 숨겨져 있습니다. `.env.local`의 `NEXT_PUBLIC_ENABLE_DEMO_CONTROLS=true` 또는 `http://localhost:3000/?debug=1`로만 활성화되며, 모든 프리셋은 가짜 UI 이벤트가 아니라 실제 transcript API를 통과합니다.
+독립적인 2단계 체인은 다음처럼 동작합니다.
 
-## 오류 로그 읽기
+```text
+질문 시점 snapshot → 내부 관련 문맥 선택 → Answer Composer → Reviewer → 답변/보류
+부재 start/end sequence → 부재 구간 요약 → Reviewer → 상세 catch-up/fallback
+최근 수업 activity → 명시적 종료 10초 또는 비활동 30초 후보 → 취소/최종 정리
+```
 
-- 서버 오류는 실행 중인 터미널에 `[LecturAI:error]` 접두사와 함께 JSON으로 출력됩니다. 각 로그에는 `errorId`, 시간, `scope`, 세션 context, 오류 이름·메시지·stack이 포함됩니다.
-- 세션 생성 이후 발생한 Agent, OpenAI, Liner, review fallback, API 오류는 상단 `RAW` 창의 `error` category에도 같은 구조로 기록됩니다.
-- Setup 또는 Live Workspace에서 발생한 브라우저/API 오류는 화면의 `ERROR LOG`를 펼쳐 HTTP status, 서버 diagnostic, 응답 원문, 브라우저 stack을 확인할 수 있습니다.
-- API 오류 응답에는 전체 stack 대신 `diagnostic.errorId`, `scope`, `message`, `timestamp`가 들어갑니다. 전체 stack은 터미널이나 해당 세션의 Raw 창에서 같은 `errorId`로 찾습니다.
-- 로그는 데모 세션과 마찬가지로 메모리에만 존재하므로 서버를 재시작하면 사라집니다.
+- 자료 분석은 실제 문서에 보이는 정의, 조건, 과정, 공식, 비교, 예시, 경고를 분리하고 각 항목의 `sourceText`와 `sourcePage`를 보존합니다. 기존 자료 UI와 전사 keyword 호환을 위한 Slide Map도 함께 반환하지만 단원 판정에는 사용하지 않습니다.
+- 자료가 없으면 빈 `MaterialKnowledge`로 시작하며 대본만으로 동작합니다.
+- Realtime WebRTC는 브라우저가 OpenAI와 직접 연결합니다. 확정 자막만 서버에 보내며 delta는 Transcript Notebook 아래에 임시 스타일로 표시합니다.
+- 서버는 `itemId` 중복을 막고 원본 자막을 모델 호출 전에 저장합니다. 저장된 대본은 필기 실패와 무관하게 reset 전까지 유지됩니다.
+- 자막 저장은 필기 모델을 호출하지 않습니다. 첫 확정 자막이 들어오면 서버의 2분 타이머가 시작됩니다.
+- 생성 시작 시 transcript `itemId` 목록을 snapshot으로 고정하고 아직 처리하지 않은 대본만 반영합니다. 생성 중이거나 순서가 뒤바뀌어 늦게 도착한 대본은 다음 작업에 남습니다.
+- scheduled는 `OPENAI_FAST_MODEL`, manual은 `OPENAI_SMART_MODEL`, final은 `OPENAI_FINAL_NOTE_MODEL`을 사용합니다. 세 경로 모두 Composer → Grounding Reviewer → 필요 시 수정 1회 → 서버 근거 검증을 실행합니다.
+- 자동 체크포인트는 짧은 발화 하나라도 새 대본이 있으면 실행하며, 모델 처리 시간과 무관하게 다음 체크포인트를 예약합니다.
+- 세션별 `noteGenerationChain`이 자동·수동 작업의 동시 실행을 막습니다. 생성 중 수동 요청은 boolean pending 요청 하나로 합쳐집니다.
+- 자동 필기를 끄더라도 transcript 저장과 수동/최종 필기는 계속됩니다. reset은 타이머와 note epoch를 바꿔 오래된 비동기 결과를 거절합니다.
+- 모델 입력이 비정상적으로 커지면 서버의 원본 note/source 상태는 유지한 채 시험·중요 항목과 섹션별 핵심 항목을 우선하는 모델 입력 사본으로 축소하고 Raw Log에 크기 플래그를 남깁니다.
+- `important`는 굵게, `exam`은 굵게와 시험 배지로 렌더링합니다. 모델이 직접 Markdown `**`를 생성하지 않습니다.
+- PDF 자동 페이지 판정은 새 필기 경로에서 사용하지 않습니다. PDF 뷰어의 이전/다음 버튼으로 사용자가 직접 페이지를 탐색할 수 있습니다.
+- 화면 상태 폴링은 기존 350ms 간격을 유지합니다.
+- 실시간 번역은 Google Cloud Translation과 별도 AI 보정 단계 없이 `gpt-5-nano`로 바로 생성합니다. 각 자막 번역은 독립적으로 실행되어 느린 요청이 다음 자막을 막지 않습니다.
+- 실시간 번역을 켜면 일반 질문과 번역문 선택 설명의 답변도 선택한 목표 언어로 생성합니다. 번역문을 드래그해 질문해도 번역 segment와 원본 `itemId`를 서버에서 검증하고, 원문 대본·자료를 근거로 답하므로 번역문이 새 사실 근거로 취급되지는 않습니다.
+- 질문은 요청 시점의 `lectureRevision`과 transcript sequence를 고정합니다. 최근 문맥은 항상 포함하고 질문 단어와 겹치는 자료·필기·과거 대본을 로컬 관련도로 선별하며, 외부 검색 도구를 전달하지 않습니다.
+- 교수자 스타일은 의미 있는 발화 12개 이후 처음 생성하고, 이후 의미 있는 발화 25개마다 별도 체인에서 갱신합니다. 사실 내용과 공격적 표현은 프로필에 저장하지 않습니다.
+- 부재 모드는 분석을 멈추지 않습니다. 부재 기간의 sequence만 결과 근거로 허용하고 긴 구간은 40개 발화 단위로 부분 요약 후 병합합니다.
+- 활동/종료 분류는 자막마다 LLM을 호출하지 않는 최근 문맥 기반 로컬 분류기입니다. 부재 중에는 비활동 종료를 보류하지만 명시적 종료는 계속 감지합니다.
 
-## 데모 진행 순서
+## UI
 
-1. PDF/PPTX를 선택하거나 자료 없이 진행합니다. 전체 검증 시연에는 이진 탐색 자료를 사용합니다.
-2. `강의실 열기`를 누릅니다.
-3. 브라우저의 마이크 권한을 허용합니다.
-4. 정상 문장: “이진 탐색은 정렬된 배열에서 사용합니다.”
-5. 불일치 문장: “이진 탐색의 최악 시간복잡도는 O(n)입니다.”
-6. 강조 문장: “정렬된 배열이라는 전제는 시험에 꼭 나옵니다.”
-7. 종료 문장: “오늘 수업은 여기까지 하겠습니다.”
-8. 자동으로 펼쳐지는 Review Sheet의 문제 3개를 확인합니다.
-9. `RAW` 창에서 `tool_call`과 `tool_result`를 확인합니다.
+- Transcript Notebook은 모든 확정 대본을 시간순으로 표시하며 텍스트 선택/복사가 가능합니다. 사용자가 아래를 보고 있을 때만 새 발화를 따라가고, 과거를 읽고 있으면 새 발화 개수 버튼을 표시합니다.
+- 필기 패널은 자동 필기 토글, 마지막 생성 시간, 서버 `nextScheduledAt` 기반 카운트다운, 수동 정리 버튼, 반영 sequence와 새 대본 여부를 표시합니다.
+- `important`는 굵게, `exam`은 굵게와 시험 배지로 표시합니다. 실시간 `currentNote`와 종료 `finalNote`를 구분합니다.
+- Raw 창은 스케줄, snapshot context, 생성, 검토, 수정, 근거 거절, final fallback 이벤트를 보여주며 전체 prompt/transcript는 로그에 복사하지 않습니다.
+- 하단 지원 패널은 자리 비움/복귀, 부재 기록, 수업 질문 입력을 제공합니다. 답변 근거는 PPT/PDF 페이지, transcript ID, 필기 ID별로 접어 볼 수 있습니다.
+- 종료 후보가 생기면 서버의 `expiresAt`을 기준으로 카운트다운과 `[계속 듣기]` 버튼을 표시합니다. 종료 확정 후에는 마이크/WebRTC를 중지하고 `finalizing` 진행 상태를 보여줍니다.
 
-## 처리 흐름
+개발자 모드는 `.env.local`의 `NEXT_PUBLIC_ENABLE_DEMO_CONTROLS=true` 또는 `/?debug=1`로 활성화합니다. MP3는 기존 Realtime WebRTC 경로로 재생하고, TXT는 partial→completed 자막 흐름을 로컬에서 시뮬레이션하되 완료 문장은 실제 transcript API를 통과합니다. `public/demo`의 Binary Search 자료와 원고를 사용할 수 있습니다.
 
-- PDF/PPTX는 해당 MIME type의 Base64 data URL로 Responses API `input_file`에 전달되며 `detail: "low"`와 Zod Structured Output을 사용합니다.
-- 자료가 없으면 factual claim이 없는 가상 강의 페이지를 사용합니다. 따라서 명시적 강조·종료·복습은 동작하지만 자료 충돌 검증은 발생하지 않습니다.
-- Realtime 엔드포인트는 `gpt-live-transcribe`용 임시 client secret만 반환합니다. `OPENAI_API_KEY`는 응답에 포함되지 않습니다.
-- 확정 자막은 세션별 `analysisChain`에서 순차 처리됩니다. Monitor Agent는 `NO_ACTION` 또는 세 툴 중 하나만 선택하며 코드의 `actionTaken`도 두 번째 실행을 차단합니다.
-- 강조, 검증, 퀴즈, 원시 스트림 로그는 메모리에만 유지됩니다. Liner는 5초 제한, 무재시도이며 실패한 검증도 `failed` 이벤트로 남습니다.
+## API 요약
 
-## API 예시
-
-PDF 세션 생성:
+세션 생성:
 
 ```bash
 curl -X POST http://localhost:3000/api/session \
   -F 'material=@./slides.pdf;type=application/pdf' \
-  -F 'instruction=강의의 명시적 행동만 기록하세요.' \
+  -F 'instruction=2분마다 기존 필기에 새 대본을 누적하세요.' \
   -F 'language=ko'
 ```
 
-PPTX 세션 생성:
+자료 없이 시작하려면 `material`을 생략합니다. PDF와 PPTX를 지원하며 과거 `pdf` form field도 허용합니다.
 
-```bash
-curl -X POST http://localhost:3000/api/session \
-  -F 'material=@./slides.pptx;type=application/vnd.openxmlformats-officedocument.presentationml.presentation' \
-  -F 'instruction=강의의 명시적 행동만 기록하세요.' \
-  -F 'language=ko'
-```
-
-자료 없는 세션 생성:
-
-```bash
-curl -X POST http://localhost:3000/api/session \
-  -F 'instruction=강의의 명시적 강조와 종료를 기록하세요.' \
-  -F 'language=ko'
-```
-
-이전 `pdf` form field도 기존 호출과의 호환을 위해 계속 허용합니다.
-
-Realtime client secret 생성:
-
-```bash
-curl -X POST http://localhost:3000/api/realtime/token \
-  -H 'Content-Type: application/json' \
-  -d '{"sessionId":"SESSION_UUID"}'
-```
-
-자막 전송:
+확정 자막 저장:
 
 ```bash
 curl -X POST http://localhost:3000/api/session/SESSION_UUID/transcript \
   -H 'Content-Type: application/json' \
   -d '{
-    "itemId":"7a5f9ab6-c82d-4b36-a942-5a8fdccb43f8",
+    "itemId":"turn-1",
     "sequence":1,
-    "text":"정렬된 배열이라는 전제는 시험에 꼭 나옵니다.",
-    "source":"typed",
-    "receivedAt":"2026-08-01T08:00:00.000Z"
+    "text":"정렬된 배열이라는 조건은 중요합니다.",
+    "source":"manual",
+    "receivedAt":"2026-08-01T08:00:00.000Z",
+    "startedAtMs":null,
+    "endedAtMs":null
   }'
 ```
 
-상태와 커서 이후 원시 로그 조회:
+응답의 deprecated `action`은 항상 `none`입니다. 저장 직후 응답하며 자막 요청 안에서 필기 모델을 호출하지 않습니다.
+
+수동 필기와 자동 필기 설정:
+
+```bash
+curl -X POST http://localhost:3000/api/session/SESSION_UUID/notes/generate \
+  -H 'Content-Type: application/json' -d '{"trigger":"manual"}'
+
+curl -X POST http://localhost:3000/api/session/SESSION_UUID/notes/settings \
+  -H 'Content-Type: application/json' -d '{"enabled":false}'
+```
+
+질문, 부재, 종료 취소:
+
+```bash
+curl -X POST http://localhost:3000/api/session/SESSION_UUID/questions \
+  -H 'Content-Type: application/json' \
+  -d '{"question":"왜 시간복잡도가 O(log n)인가요?"}'
+
+curl http://localhost:3000/api/session/SESSION_UUID/questions
+curl -X POST http://localhost:3000/api/session/SESSION_UUID/absence/start
+curl -X POST http://localhost:3000/api/session/SESSION_UUID/absence/end
+curl http://localhost:3000/api/session/SESSION_UUID/absence
+curl -X POST http://localhost:3000/api/session/SESSION_UUID/end/cancel
+```
 
 ```bash
 curl http://localhost:3000/api/session/SESSION_UUID/state
 curl 'http://localhost:3000/api/session/SESSION_UUID/raw?after=0'
-```
-
-세션 진행 상태 초기화(슬라이드와 최초 instruction은 유지):
-
-```bash
 curl -X POST http://localhost:3000/api/session/SESSION_UUID/reset
 ```
 
-## 데모 스모크 테스트
+reset은 분석된 자료와 최초 instruction은 보존하고 transcript, `currentNote`, `finalNote`, 질문, 스타일 프로필, 부재 기록, 종료 후보, cursor, 타이머, pending 작업, review와 raw log를 초기화합니다.
 
-개발 서버를 실행한 상태에서 별도 터미널에서 실행합니다. 테스트는 이진 탐색 내용의 최소 PDF를 메모리에서 생성하고 정상 자막, 강조, 직접 충돌, 종료 자막을 차례로 전송합니다.
+## 검증
+
+```bash
+npm run typecheck
+npm run lint
+npm run test:notes
+npm run test:lecture
+npm run test:stage2
+npm run test:assistant
+npm run test:transcription-keywords
+npm run test:web-search-parser
+npm run test:web-search-disabled
+npm run build
+```
+
+`test:notes`는 mock Composer/Reviewer로 Binary Search의 세 체크포인트 누적 병합, stable ID, 시험 강조, snapshot 경계, 수동 중복 요청, 실패 cursor, 서버 타이머, 자동 토글, reset stale 결과, final 중복 방지와 fallback을 검사합니다. `test:stage2`는 질문 snapshot/grounding/보류, 교수 스타일, 다중 부재와 fallback, 종료 오탐 방지, 비활동과 부재 억제, grace 취소, Binary Search 통합 시나리오와 종료 중 작업 정리를 검사합니다. `test:lecture`는 기존 지식 처리 유틸리티의 회귀와 transcript 저장 시 필기 LLM을 호출하지 않는 계약을 확인합니다.
+
+개발 서버와 실제 API key를 사용한 E2E:
 
 ```bash
 npm run demo:smoke
 ```
 
-다른 서버 주소나 PDF/PPTX를 쓰려면 다음 환경변수를 지정합니다.
-
-```bash
-DEMO_BASE_URL=http://localhost:3000 DEMO_MATERIAL_PATH=./slides.pptx npm run demo:smoke
-```
-
-자료 없는 흐름은 다음처럼 검사합니다. 이 모드에서는 verification assertion을 생략하고 강조와 복습 문제를 확인합니다.
-
-```bash
-DEMO_NO_MATERIAL=true npm run demo:smoke
-```
-
-기존 `DEMO_PDF_PATH`도 호환 목적으로 지원합니다.
-
-OpenAI 모델 판단은 확률적입니다. 스모크 테스트는 실제 API 키와 네트워크를 사용하며 emphasis 이벤트, 정확히 3개의 review 문제, `tool_call`/`tool_result` 로그를 확인합니다. 자료가 있는 기본 모드에서는 verification 이벤트도 확인하며 검색 실패의 `failed` 상태를 허용합니다.
+이 테스트는 메모리에서 Binary Search PDF를 만들고 Material Knowledge, 수동 누적 필기 API, grounding raw logs, 중복 자막과 reset을 검사합니다. 웹 검색 로그가 하나라도 나오면 실패합니다. 다른 서버는 `DEMO_BASE_URL`, 자료 없는 흐름은 `DEMO_NO_MATERIAL=true`를 사용합니다.

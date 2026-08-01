@@ -8,12 +8,24 @@
     "start": "next start",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
-    "demo:smoke": "tsx scripts/demo-smoke-test.ts"
+    "test": "npm run test:notes && npm run test:lecture && npm run test:stage2 && npm run test:translation && npm run test:translated-selection && npm run test:transcription-keywords && npm run test:assistant && npm run test:understanding && npm run test:web-search-disabled",
+    "demo:smoke": "tsx scripts/demo-smoke-test.ts",
+    "test:transcription-keywords": "tsx scripts/transcription-keywords-test.ts",
+    "test:lecture": "tsx scripts/lecture-regression-test.ts",
+    "test:notes": "tsx scripts/note-generation-regression-test.ts",
+    "test:stage2": "tsx scripts/stage-two-regression-test.ts",
+    "test:translation": "tsx scripts/translation-regression-test.ts",
+    "test:translated-selection": "tsx scripts/translated-selection-regression-test.ts",
+    "test:assistant": "tsx scripts/assistant-regression-test.ts",
+    "test:understanding": "tsx scripts/understanding-branch-regression-test.ts",
+    "test:web-search-parser": "tsx scripts/openai-web-search-parser-test.ts",
+    "test:web-search-disabled": "tsx scripts/openai-web-search-smoke-test.ts"
   },
   "dependencies": {
     "@openai/agents": "^0.14.2",
     "next": "^16.2.12",
     "openai": "^7.3.0",
+    "pdfjs-dist": "^6.2.108",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
     "zod": "^4.4.3"

@@ -7,7 +7,7 @@ import {
 } from "@/backend/logs/error-log";
 import {
   analyzeLectureMaterial,
-  createNoMaterialSlideMap,
+  createNoMaterialAnalysis,
   type LectureMaterialKind,
 } from "@/backend/presentation/analyze-material";
 import {
@@ -15,6 +15,7 @@ import {
   makeSessionReady,
   markSessionError,
 } from "@/backend/session-store";
+import { buildTranscriptionKeywords } from "@/backend/realtime/create-transcription-token";
 
 export const runtime = "nodejs";
 
@@ -83,31 +84,24 @@ export async function POST(request: Request) {
     }
 
     session = createPreparingSession(input.instruction, input.language);
-    const slideMap = input.material && materialKind
+    const analysis = input.material && materialKind
       ? await analyzeLectureMaterial(
           Buffer.from(await input.material.arrayBuffer()),
           input.material.name,
           materialKind,
           input.language,
         )
-      : createNoMaterialSlideMap(input.language);
-    makeSessionReady(session, slideMap);
+      : createNoMaterialAnalysis(input.language);
+    makeSessionReady(session, analysis.slideMap, analysis.materialKnowledge);
 
-    const keywords = Array.from(
-      new Set([
-        ...slideMap.globalKeywords,
-        ...slideMap.slides.flatMap((slide) => [
-          ...slide.keywords,
-          ...slide.keyConcepts,
-        ]),
-      ]),
-    ).slice(0, 40);
+    const keywords = buildTranscriptionKeywords(analysis.slideMap);
 
     return NextResponse.json({
       sessionId: session.id,
-      slideMap,
+      slideMap: analysis.slideMap,
+      materialKnowledge: analysis.materialKnowledge,
       transcriptionHints: {
-        prompt: `${slideMap.documentTitle}\n${slideMap.documentSummary}`,
+        prompt: `${analysis.materialKnowledge.title || analysis.slideMap.documentTitle}\n${analysis.materialKnowledge.summary || analysis.slideMap.documentSummary}`,
         keywords,
       },
     });

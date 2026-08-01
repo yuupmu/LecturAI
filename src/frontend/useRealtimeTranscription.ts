@@ -9,6 +9,8 @@ export interface RealtimeFinalTranscript {
   sequence: number;
   text: string;
   receivedAt: string;
+  startedAtMs: number | null;
+  endedAtMs: number | null;
 }
 
 type ConnectionPhase =
@@ -49,6 +51,8 @@ export function useRealtimeTranscription({
   const animationFrameRef = useRef<number | null>(null);
   const partialRef = useRef<Map<string, string>>(new Map());
   const sequenceByItemRef = useRef<Map<string, number>>(new Map());
+  const startedAtByItemRef = useRef<Map<string, number>>(new Map());
+  const endedAtByItemRef = useRef<Map<string, number>>(new Map());
   const completedItemIdsRef = useRef<Set<string>>(new Set());
   const sequenceRef = useRef(0);
   const callbackRef = useRef(onFinalTranscript);
@@ -87,6 +91,8 @@ export function useRealtimeTranscription({
     }
     partialRef.current = new Map();
     sequenceByItemRef.current = new Map();
+    startedAtByItemRef.current = new Map();
+    endedAtByItemRef.current = new Map();
     completedItemIdsRef.current = new Set();
     if (updateUi) {
       setConnectionPhase("idle");
@@ -157,7 +163,11 @@ export function useRealtimeTranscription({
           sequence: ensureSequence(itemId),
           text,
           receivedAt: new Date().toISOString(),
+          startedAtMs: startedAtByItemRef.current.get(itemId) ?? null,
+          endedAtMs: endedAtByItemRef.current.get(itemId) ?? null,
         };
+        startedAtByItemRef.current.delete(itemId);
+        endedAtByItemRef.current.delete(itemId);
         setRecentFinals((current) => [...current, completed].slice(-3));
         Promise.resolve(callbackRef.current(completed)).catch(() => {
           setWarning("완성된 자막을 강의 문맥과 대조하지 못했습니다. 다음 발화는 계속 듣습니다.");
@@ -178,13 +188,21 @@ export function useRealtimeTranscription({
       }
 
       if (type === "input_audio_buffer.speech_started") {
-        if (itemId) ensureSequence(itemId);
+        if (itemId) {
+          ensureSequence(itemId);
+          if (typeof event.audio_start_ms === "number") {
+            startedAtByItemRef.current.set(itemId, event.audio_start_ms);
+          }
+        }
         setSpeaking(true);
         setWarning(null);
         return;
       }
 
       if (type === "input_audio_buffer.speech_stopped") {
+        if (itemId && typeof event.audio_end_ms === "number") {
+          endedAtByItemRef.current.set(itemId, event.audio_end_ms);
+        }
         setSpeaking(false);
         return;
       }

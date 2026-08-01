@@ -82,16 +82,17 @@ function fallbackReview(session: LectureSession): Review {
       eventId: "",
     })),
   );
+  const defaultPage = session.slideMap.slides[0]?.page ?? 1;
   const emphasisCandidates = emphasis.map((event) => ({
-      page: event.slidePage,
-      text: event.concept,
-      eventId: event.id,
-    }));
+    page: event.slidePage ?? defaultPage,
+    text: event.resolvedConcept,
+    eventId: event.id,
+  }));
   const verificationCandidates = verification.map((event) => ({
-      page: event.slidePage,
-      text: event.correctedStatement || event.slideClaim,
-      eventId: event.id,
-    }));
+    page: event.slidePage ?? defaultPage,
+    text: event.correctedStatement || event.slideClaim,
+    eventId: event.id,
+  }));
   const candidates = verificationCandidates.length > 0
     ? [
         ...emphasisCandidates.slice(0, 2),
@@ -101,8 +102,6 @@ function fallbackReview(session: LectureSession): Review {
         ...claims,
       ]
     : [...emphasisCandidates, ...claims];
-  const defaultPage = session.slideMap.slides[0]?.page ?? 1;
-
   while (candidates.length < 3) {
     candidates.push({
       page: defaultPage,
