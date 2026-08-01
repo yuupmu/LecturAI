@@ -103,7 +103,8 @@ sudo tee /etc/lecturai/caddy.env >/dev/null <<EOF
 SITE_ADDRESS=${site_address}
 ACME_EMAIL=${ACME_EMAIL_INPUT}
 SITE_USERNAME=${SITE_USERNAME_INPUT}
-SITE_PASSWORD_HASH=${password_hash}
+# Single quotes keep Docker Compose from expanding the dollar signs in bcrypt.
+SITE_PASSWORD_HASH='${password_hash}'
 EOF
 
 sudo chmod 0600 /etc/lecturai/app.env /etc/lecturai/caddy.env
