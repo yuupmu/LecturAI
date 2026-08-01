@@ -362,9 +362,19 @@ function publishRejoinPacket(
   fallback: boolean,
 ) {
   const allowed = new Set(context.elapsedTurns.map((turn) => turn.itemId));
+  const sourceItemIds = Array.from(
+    new Set(draft.sourceItemIds.filter((id) => allowed.has(id))),
+  );
   return UnderstandingRejoinPacketSchema.parse({
     ...draft,
-    sourceItemIds: Array.from(new Set(draft.sourceItemIds.filter((id) => allowed.has(id)))),
+    missedItemIds: sourceItemIds,
+    // Compatibility projection for already shipped clients and saved records.
+    understoodContent: draft.quickRejoin.mustKnowNow,
+    lectureProgress: draft.detailedCatchUp.keyPoints,
+    currentLecturePosition: draft.quickRejoin.currentTopic,
+    connection: draft.quickRejoin.bridgeSentence,
+    listenFor: [draft.quickRejoin.listenForNext],
+    sourceItemIds,
     rawTranscript: context.elapsedTurns.map(({ itemId, sequence, text, receivedAt }) => ({
       itemId,
       sequence,
@@ -381,23 +391,47 @@ function fallbackRejoinPacket(context: UnderstandingRejoinContext) {
   const assistantPoints = context.branchMessages
     .filter((message) => message.role === "assistant")
     .flatMap((message) => message.answer?.keyPoints ?? [])
-    .slice(0, 6);
+    .slice(0, 3)
+    .map((point) => concise(point));
+  const latestTurn = context.elapsedTurns.at(-1);
+  const currentTopic = context.currentNote
+    ? context.currentNote.sections.at(-1)?.heading ?? context.currentNote.title
+    : latestTurn
+      ? concise(latestTurn.text, 160)
+      : "최신 수업 대본으로 돌아갑니다.";
   return publishRejoinPacket(context, {
-    understoodContent: assistantPoints.length > 0
-      ? assistantPoints
-      : ["개인 보충 설명의 대화 기록을 다시 확인해 주세요."],
-    lectureProgress: context.elapsedTurns.length > 0
-      ? context.elapsedTurns.slice(-8).map((turn) => turn.text)
-      : ["분기 중 새로 기록된 발화가 없습니다."],
-    currentLecturePosition: context.knownCurrentLecturePosition,
-    connection: context.elapsedTurns.length > 0
-      ? `보충 설명의 중심인 “${context.focusText.slice(0, 120)}”에서 이어진 실제 발화를 원문 순서로 확인하세요.`
-      : "같은 수업 위치에서 다시 들으면 됩니다.",
-    listenFor: context.currentNote
-      ? [context.currentNote.sections.at(-1)?.heading ?? context.currentNote.title]
-      : ["가장 최근 대본의 핵심 용어와 다음 전환을 확인하세요."],
+    quickRejoin: {
+      mustKnowNow: assistantPoints.length > 0
+        ? assistantPoints
+        : ["개인 보충 설명의 핵심은 상세 기록에서 확인할 수 있습니다."],
+      currentTopic,
+      bridgeSentence: latestTurn
+        ? `개인 설명의 주제와 최신 발화 “${concise(latestTurn.text, 90)}”를 연결해 들으세요.`
+        : "새로 지나간 발화가 없어 같은 수업 위치에서 다시 들으면 됩니다.",
+      listenForNext: context.currentNote
+        ? `최신 필기 주제 “${concise(currentTopic, 100)}”의 다음 설명에 집중하세요.`
+        : "화면에 강조된 최신 발화부터 확인하세요.",
+    },
+    detailedCatchUp: {
+      branchSummary: assistantPoints.length > 0
+        ? assistantPoints.join(" ")
+        : "개인 보충 설명의 대화 기록을 다시 확인해 주세요.",
+      missedLectureSummary: context.elapsedTurns.length > 0
+        ? context.elapsedTurns.slice(-3).map((turn) => concise(turn.text)).join(" ")
+        : "분기 중 새로 기록된 발화가 없습니다.",
+      keyPoints: context.elapsedTurns.length > 0
+        ? context.elapsedTurns.slice(-3).map((turn) => concise(turn.text))
+        : ["분기 중 새로 기록된 발화가 없습니다."],
+    },
     sourceItemIds: context.elapsedTurns.map((turn) => turn.itemId),
   }, true);
+}
+
+function concise(value: string, maxLength = 140): string {
+  const normalized = value.replace(/\s+/gu, " ").trim();
+  return normalized.length <= maxLength
+    ? normalized
+    : `${normalized.slice(0, maxLength - 1).trimEnd()}…`;
 }
 
 function requireCurrentBranch(

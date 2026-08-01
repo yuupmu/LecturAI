@@ -154,6 +154,11 @@
 .rejoinCard li { margin-top: 0; font-size: 0.74rem; line-height: 1.5; }
 .rejoinCard details { margin-top: 11px; border-top: 1px solid rgba(49, 43, 34, 0.14); padding-top: 8px; }
 .rejoinCard summary { cursor: pointer; font-size: 0.7rem; color: #655b43; }
+.quickRejoin { display: block !important; margin-top: 12px; padding: 11px; background: #fffdf7; border-left: 3px solid #a79564; }
+.quickRejoin > span { color: #75653e; font-size: 0.62rem; letter-spacing: 0.08em; }
+.resumeButton { width: 100%; margin-top: 11px; border: 0; padding: 11px 13px; background: #312f2a; color: #fffdf5; cursor: pointer; }
+.detailedCatchUp { margin-top: 9px !important; }
+.saveForLater { margin-top: 9px; border: 0; background: transparent; color: #655b43; font: inherit; font-size: 0.7rem; text-decoration: underline; cursor: pointer; }
 
 @keyframes interactionEnter {
   from { opacity: 0; transform: translateY(5px); }

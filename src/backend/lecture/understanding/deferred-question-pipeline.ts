@@ -15,6 +15,12 @@ import {
 } from "../../schemas";
 import { touchSession } from "../../session-store";
 import { validateQuestionTranscriptSelection } from "../questions/validate-transcript-selection";
+import {
+  generateLectureAssistantAnswer,
+  type LectureAssistantGenerator,
+} from "../assistant/answer-lecture-question";
+import { buildFullLectureContext } from "../assistant/build-full-lecture-context";
+import { validateAssistantAnswer } from "../assistant/validate-assistant-answer";
 
 const AUTO_CHECK_TRANSCRIPT_COUNT = 5;
 
@@ -35,6 +41,103 @@ export interface DeferredQuestionResult {
   accepted: boolean;
   question: DeferredQuestion;
   message: string;
+}
+
+export interface DeferredQuestionFinalizationDependencies {
+  judge?: DeferredQuestionJudge;
+  explain?: LectureAssistantGenerator;
+}
+
+/**
+ * Gives every unresolved saved question a final, end-of-class answer. We first
+ * give the professor's later transcript one last chance to answer it; otherwise
+ * the lecture assistant explains it from the completed lecture context.
+ */
+export async function finalizeDeferredQuestions(
+  session: LectureSession,
+  dependencies: DeferredQuestionFinalizationDependencies = {},
+): Promise<void> {
+  await session.deferredQuestionChain.catch(() => undefined);
+  const judge = dependencies.judge ?? judgeDeferredQuestionWithModel;
+  const explain = dependencies.explain ?? generateLectureAssistantAnswer;
+  const throughSequence = session.transcripts.at(-1)?.sequence ?? 0;
+
+  for (const question of session.deferredQuestions) {
+    if (question.status === "resolved") continue;
+
+    const context = buildCheckContext(session, question, throughSequence);
+    if (context.subsequentTranscript.length > 0) {
+      try {
+        const decision = DeferredQuestionDecisionSchema.parse(await judge(context));
+        const availableById = new Map(
+          context.subsequentTranscript.map((turn) => [turn.itemId, turn]),
+        );
+        const relatedTurns = Array.from(new Set(decision.relatedItemIds))
+          .flatMap((itemId) => {
+            const turn = availableById.get(itemId);
+            return turn ? [turn] : [];
+          });
+        if (decision.explained && relatedTurns.length > 0) {
+          question.status = "explained_by_lecture";
+          question.lectureExplanation = decision.explanation ||
+            "교수자의 이후 설명에서 질문에 대한 답을 확인했습니다.";
+          question.relatedItemIds = relatedTurns.map((turn) => turn.itemId);
+          question.relatedSequences = relatedTurns.map((turn) => turn.sequence);
+        }
+        question.lastCheckedThroughSequence = throughSequence;
+        question.checkedAt = new Date().toISOString();
+        question.checkCount += 1;
+        question.checkStatus = "idle";
+      } catch (error) {
+        recordSessionError(session, "deferred_question_final_check", error, {
+          questionId: question.id,
+        });
+      }
+    }
+
+    if (question.status !== "explained_by_lecture") {
+      const startedAt = Date.now();
+      try {
+        const answerContext = buildFullLectureContext(session, {
+          mode: "question",
+          snapshotSequence: throughSequence,
+          question: `수업 중 맡겨둔 질문에 수업이 끝난 지금 직접 답하세요.\n\n질문 당시 내용: ${question.focusText}\n\n학생 질문: ${question.question}`,
+          selection: null,
+        });
+        const answer = validateAssistantAnswer(
+          session,
+          question.id,
+          throughSequence,
+          await explain(answerContext),
+        );
+        question.status = "ai_explanation_available";
+        question.lectureExplanation = [answer.directAnswer, answer.explanation]
+          .filter(Boolean)
+          .join("\n\n");
+        question.relatedItemIds = answer.referencedItemIds;
+        question.relatedSequences = answer.referencedItemIds.flatMap((itemId) => {
+          const sequence = session.transcripts.find((turn) => turn.itemId === itemId)?.sequence;
+          return sequence === undefined ? [] : [sequence];
+        });
+        question.checkStatus = "idle";
+        question.errorMessage = null;
+        appendRawLog(session, "system", "deferred_question_end_of_class_explained", deferredLog(
+          session,
+          question,
+          Date.now() - startedAt,
+          "end_of_class_ai_explanation_published",
+        ));
+      } catch (error) {
+        question.status = "failed";
+        question.checkStatus = "idle";
+        question.errorMessage = "수업 종료 후 설명을 생성하지 못했습니다.";
+        recordSessionError(session, "deferred_question_final_explanation", error, {
+          questionId: question.id,
+        });
+      }
+    }
+    touchSession(session);
+  }
 }
 
 export function createDeferredQuestion(

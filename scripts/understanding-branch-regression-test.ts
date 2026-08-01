@@ -79,11 +79,17 @@ async function main() {
   const dependencies = {
     explain: async () => answer("왜 절반으로 줄어드나요?"),
     composeRejoin: async (): Promise<UnderstandingRejoinDraft> => ({
-      understoodContent: ["정렬 덕분에 절반을 제외할 수 있습니다."],
-      lectureProgress: ["정렬 유지 비용을 설명했습니다."],
-      currentLecturePosition: "삽입과 삭제 비용을 설명하는 중입니다.",
-      connection: "빠른 탐색과 정렬 유지 비용을 함께 비교하면 됩니다.",
-      listenFor: ["탐색 비용과 갱신 비용의 trade-off"],
+      quickRejoin: {
+        mustKnowNow: ["정렬 덕분에 절반을 제외할 수 있습니다."],
+        currentTopic: "삽입과 삭제 비용을 설명하는 중입니다.",
+        bridgeSentence: "빠른 탐색과 정렬 유지 비용을 함께 비교하면 됩니다.",
+        listenForNext: "탐색 비용과 갱신 비용의 trade-off",
+      },
+      detailedCatchUp: {
+        branchSummary: "정렬 덕분에 탐색 범위의 절반을 제외할 수 있습니다.",
+        missedLectureSummary: "정렬 유지 비용을 설명했습니다.",
+        keyPoints: ["정렬 유지 비용"],
+      },
       sourceItemIds: ["item-2"],
     }),
   };
@@ -117,11 +123,17 @@ async function main() {
   assert.equal(rejoin.branch.endedAtSequence, 3);
   appendTranscript(session, 4, "이 발화는 합류 버튼 뒤에 도착했습니다.");
   resolveRejoin?.({
-    understoodContent: ["절반 제외 원리"],
-    lectureProgress: ["정렬 유지 비용"],
-    currentLecturePosition: "삭제 비용",
-    connection: "탐색과 갱신 비용을 연결합니다.",
-    listenFor: ["trade-off"],
+    quickRejoin: {
+      mustKnowNow: ["절반 제외 원리"],
+      currentTopic: "삭제 비용",
+      bridgeSentence: "탐색과 갱신 비용을 연결합니다.",
+      listenForNext: "trade-off",
+    },
+    detailedCatchUp: {
+      branchSummary: "절반 제외 원리",
+      missedLectureSummary: "정렬 유지 비용",
+      keyPoints: ["정렬 유지 비용"],
+    },
     sourceItemIds: ["item-2", "item-4"],
   });
   await session.understandingBranchChain;
@@ -135,6 +147,12 @@ async function main() {
     started.branch.rejoinPacket?.rawTranscript.map((turn) => turn.sequence),
     [2, 3],
   );
+  assert.ok((started.branch.rejoinPacket?.quickRejoin.mustKnowNow.length ?? 4) <= 3);
+  assert.equal(started.branch.rejoinPacket?.quickRejoin.currentTopic, "삭제 비용");
+  assert.equal(started.branch.rejoinPacket?.quickRejoin.bridgeSentence, "탐색과 갱신 비용을 연결합니다.");
+  assert.equal(started.branch.rejoinPacket?.quickRejoin.listenForNext, "trade-off");
+  assert.equal(started.branch.rejoinPacket?.detailedCatchUp.keyPoints[0], "정렬 유지 비용");
+  assert.deepEqual(started.branch.rejoinPacket?.missedItemIds, ["item-2"]);
 
   const deferred = createDeferredQuestion(session, {
     question: "lower bound와 일반 이진 탐색은 어떻게 다른가요?",
@@ -205,6 +223,10 @@ async function main() {
   await session.understandingBranchChain;
   assert.equal(fallbackRejoin.branch.status, "completed");
   assert.equal(fallbackRejoin.branch.rejoinPacket?.fallback, true);
+  assert.ok(fallbackRejoin.branch.rejoinPacket?.quickRejoin.currentTopic);
+  assert.ok(fallbackRejoin.branch.rejoinPacket?.quickRejoin.bridgeSentence);
+  assert.ok(fallbackRejoin.branch.rejoinPacket?.quickRejoin.listenForNext);
+  assert.ok((fallbackRejoin.branch.rejoinPacket?.quickRejoin.mustKnowNow.length ?? 4) <= 3);
   assert.deepEqual(
     fallbackRejoin.branch.rejoinPacket?.rawTranscript,
     [],
@@ -212,17 +234,36 @@ async function main() {
   );
   session.status = "listening";
 
-  let resolveStale: ((value: LectureAssistantModelAnswer) => void) | undefined;
-  const staleAnswer = new Promise<LectureAssistantModelAnswer>((resolve) => {
-    resolveStale = resolve;
-  });
+  appendTranscript(session, 20, "reset 직전 최신 발화입니다.");
   const staleBranch = startUnderstandingBranch(session, {}, {
     ...dependencies,
-    explain: async () => staleAnswer,
+    explain: async () => answer("reset 전 설명"),
   });
   assert.equal(staleBranch.accepted, true);
+  await session.understandingBranchChain;
+  let resolveStale: ((value: UnderstandingRejoinDraft) => void) | undefined;
+  const staleRejoinDraft = new Promise<UnderstandingRejoinDraft>((resolve) => {
+    resolveStale = resolve;
+  });
+  rejoinUnderstandingBranch(session, staleBranch.branch.id, {
+    ...dependencies,
+    composeRejoin: async () => staleRejoinDraft,
+  });
   const reset = resetSession(session);
-  resolveStale?.(answer("오래된 응답"));
+  resolveStale?.({
+    quickRejoin: {
+      mustKnowNow: ["오래된 합류 응답"],
+      currentTopic: "오래된 주제",
+      bridgeSentence: "적용되면 안 됩니다.",
+      listenForNext: "적용되면 안 됩니다.",
+    },
+    detailedCatchUp: {
+      branchSummary: "오래된 설명",
+      missedLectureSummary: "오래된 수업",
+      keyPoints: [],
+    },
+    sourceItemIds: [],
+  });
   await reset;
   await session.understandingBranchChain;
   assert.equal(session.understandingBranches.length, 0);

@@ -19,7 +19,7 @@ interface ActiveTranscriptSelection extends TranscriptSelectionDto {
 
 const MIN_SELECTION_LENGTH = 4;
 const POPOVER_WIDTH = 252;
-const POPOVER_HEIGHT = 142;
+const POPOVER_HEIGHT = 104;
 
 export function TranscriptNotebook({
   transcripts,
@@ -28,8 +28,9 @@ export function TranscriptNotebook({
   translations = [],
   embedded = false,
   showUnderstandingButton = true,
+  highlightItemId = null,
   onStartUnderstanding,
-  onDeferQuestion,
+  onAskSelection,
 }: {
   transcripts: TranscriptDto[];
   partials: ReadonlyMap<string, string>;
@@ -37,10 +38,11 @@ export function TranscriptNotebook({
   translations?: LiveTranslationSegmentDto[];
   embedded?: boolean;
   showUnderstandingButton?: boolean;
+  highlightItemId?: string | null;
   onStartUnderstanding?: (selection?: TranscriptSelectionDto) => Promise<void>;
-  onDeferQuestion?: (
-    selection?: TranscriptSelectionDto,
-    question?: string,
+  onAskSelection?: (
+    selection: TranscriptSelectionDto,
+    anchor: { top: number; left: number },
   ) => Promise<void>;
 }) {
   const scrollerRef = useRef<HTMLDivElement | null>(null);
@@ -52,13 +54,9 @@ export function TranscriptNotebook({
   );
   const [selectionBusy, setSelectionBusy] = useState(false);
   const [selectionPendingAction, setSelectionPendingAction] = useState<
-    "immediate" | "defer" | null
+    "immediate" | null
   >(null);
   const [selectionError, setSelectionError] = useState<string | null>(null);
-  const [deferredDraft, setDeferredDraft] = useState<TranscriptSelectionDto | null>(null);
-  const [deferredQuestion, setDeferredQuestion] = useState("");
-  const [deferredBusy, setDeferredBusy] = useState(false);
-  const [deferredError, setDeferredError] = useState<string | null>(null);
   const translationActive = translationSettings?.enabled === true &&
     translationSettings.targetLanguage !== null;
   const currentTranslations = translations
@@ -93,6 +91,19 @@ export function TranscriptNotebook({
   };
 
   useEffect(() => {
+    if (!highlightItemId) return;
+    const scroller = scrollerRef.current;
+    const target = scroller?.querySelector<HTMLElement>(
+      `[data-transcript-row-id="${CSS.escape(highlightItemId)}"]`,
+    );
+    if (!target) return;
+    target.scrollIntoView({ behavior: "smooth", block: "center" });
+    target.focus({ preventScroll: true });
+    atBottomRef.current = true;
+    setNewTurnCount(0);
+  }, [highlightItemId]);
+
+  useEffect(() => {
     const added = Math.max(0, transcripts.length - previousCountRef.current);
     previousCountRef.current = transcripts.length;
     if (added === 0) return;
@@ -124,7 +135,7 @@ export function TranscriptNotebook({
   }, [visibleSelection]);
 
   const captureSelection = () => {
-    if (!onStartUnderstanding && !onDeferQuestion) return;
+    if (!onAskSelection) return;
     const scroller = scrollerRef.current;
     const browserSelection = window.getSelection();
     if (!scroller || !browserSelection || browserSelection.isCollapsed) {
@@ -230,7 +241,7 @@ export function TranscriptNotebook({
     setSelectionError(null);
   };
 
-  const requestSelectionHelp = async (action: "immediate" | "defer") => {
+  const requestSelectionHelp = async (anchor: { top: number; left: number }) => {
     if (!visibleSelection || selectionBusy) return;
     const selectedPayload: TranscriptSelectionDto = {
       selectedText: visibleSelection.selectedText,
@@ -242,23 +253,14 @@ export function TranscriptNotebook({
       translationIds: visibleSelection.translationIds,
       intent: "explain",
     };
-    if (action === "defer") {
-      if (!onDeferQuestion) return;
-      setDeferredDraft(selectedPayload);
-      setDeferredQuestion("");
-      setDeferredError(null);
-      setSelection(null);
-      window.getSelection()?.removeAllRanges();
-      return;
-    }
-    if (!onStartUnderstanding) return;
+    if (!onAskSelection) return;
     setSelectionBusy(true);
-    setSelectionPendingAction(action);
+    setSelectionPendingAction("immediate");
     setSelectionError(null);
+    setSelection(null);
+    window.getSelection()?.removeAllRanges();
     try {
-      await onStartUnderstanding(selectedPayload);
-      setSelection(null);
-      window.getSelection()?.removeAllRanges();
+      await onAskSelection(selectedPayload, anchor);
     } catch (error) {
       setSelectionError(
         error instanceof Error ? error.message : "도움 요청을 보내지 못했습니다.",
@@ -344,8 +346,10 @@ export function TranscriptNotebook({
             return (
             <li
               id={`transcript-${transcript.itemId}`}
+              data-transcript-row-id={transcript.itemId}
+              tabIndex={highlightItemId === transcript.itemId ? -1 : undefined}
               key={transcript.id}
-              className={translationActive ? styles.translatedTurn : ""}
+              className={`${translationActive ? styles.translatedTurn : ""} ${highlightItemId === transcript.itemId ? styles.rejoinHighlight : ""}`}
             >
               <div className={styles.turnMeta}>
                 <span>#{String(transcript.sequence).padStart(3, "0")}</span>
@@ -419,73 +423,8 @@ export function TranscriptNotebook({
           selectionKind={visibleSelection.kind}
           targetLanguage={visibleSelection.targetLanguage}
           pendingAction={selectionPendingAction}
-          onImmediate={() => void requestSelectionHelp("immediate")}
-          onDefer={() => void requestSelectionHelp("defer")}
+          onImmediate={(anchor) => void requestSelectionHelp(anchor)}
         />
-      )}
-      {deferredDraft && onDeferQuestion && (
-        <div
-          className={styles.deferredBackdrop}
-          role="presentation"
-          onMouseDown={(event) => {
-            if (event.target === event.currentTarget && !deferredBusy) {
-              setDeferredDraft(null);
-            }
-          }}
-        >
-          <form
-            className={styles.deferredComposer}
-            aria-label="질문만 맡겨두기"
-            onSubmit={(event) => {
-              event.preventDefault();
-              if (deferredBusy) return;
-              setDeferredBusy(true);
-              setDeferredError(null);
-              void onDeferQuestion(
-                deferredDraft,
-                deferredQuestion.trim() || undefined,
-              ).then(() => {
-                setDeferredDraft(null);
-                setDeferredQuestion("");
-              }).catch((error) => {
-                setDeferredError(
-                  error instanceof Error ? error.message : "질문을 맡기지 못했습니다.",
-                );
-              }).finally(() => setDeferredBusy(false));
-            }}
-          >
-            <header>
-              <div>
-                <strong>질문만 맡겨두기</strong>
-                <span>긴 설명은 지금 열지 않습니다.</span>
-              </div>
-              <button
-                type="button"
-                aria-label="닫기"
-                disabled={deferredBusy}
-                onClick={() => setDeferredDraft(null)}
-              >
-                ×
-              </button>
-            </header>
-            <blockquote>{deferredDraft.selectedText}</blockquote>
-            <label>
-              <span>궁금한 점을 추가할 수 있습니다 · 선택 사항</span>
-              <input
-                value={deferredQuestion}
-                onChange={(event) => setDeferredQuestion(event.target.value)}
-                placeholder="예: 왜 정렬되어 있어야 하지?"
-                maxLength={4_000}
-                disabled={deferredBusy}
-              />
-            </label>
-            <p>교수자가 뒤에서 직접 설명하는지 새 대본을 모아 확인합니다.</p>
-            {deferredError && <small role="alert">{deferredError}</small>}
-            <button type="submit" disabled={deferredBusy}>
-              {deferredBusy ? "맡기는 중…" : "질문 맡기기"}
-            </button>
-          </form>
-        </div>
       )}
     </section>
   );
