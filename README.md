@@ -68,6 +68,14 @@ curl -u "$SITE_USERNAME:$SITE_PASSWORD" https://YOUR_SITE/api/health
 컨테이너나 VM을 재시작하면 메모리의 강의 세션은 사라집니다. 여러 앱
 컨테이너를 동시에 실행하지 마세요.
 
+새 Ubuntu 24.04 Compute Engine VM에서는 다음 설치 스크립트를 실행할 수
+있습니다. OpenAI 키, 인증서 알림 이메일, 사이트 로그인 정보를 터미널에서
+직접 물어보고 `/etc/lecturai`에 권한 `0600`으로 저장합니다.
+
+```bash
+bash deploy/setup-ubuntu-vm.sh
+```
+
 ## 현재 처리 흐름
 
 ```text
