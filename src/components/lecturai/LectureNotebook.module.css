@@ -267,47 +267,28 @@
   border-bottom: 1px solid rgba(248, 243, 233, 0.1);
 }
 
-.autoToggle,
-.generateNoteButton {
+.automaticNoteStatus {
   width: 100%;
   border: 1px solid rgba(248, 243, 233, 0.18);
-  color: #aebac2;
+  color: var(--acid);
   background: rgba(255, 255, 255, 0.025);
-  cursor: pointer;
   font-family: var(--font-mono), monospace;
   font-size: 8px;
   font-weight: 700;
-}
-
-.autoToggle {
   display: flex;
   align-items: center;
   gap: 8px;
   padding: 9px 10px;
   text-align: left;
+  border-color: rgba(217, 255, 91, 0.35);
 }
 
-.autoToggle > span {
+.automaticNoteStatus > span {
   width: 7px;
   height: 7px;
   border-radius: 50%;
-  background: #596976;
-}
-
-.autoToggleOn {
-  border-color: rgba(217, 255, 91, 0.35);
-  color: var(--acid);
-}
-
-.autoToggleOn > span {
   background: var(--acid);
   box-shadow: 0 0 8px rgba(217, 255, 91, 0.48);
-}
-
-.autoToggle:disabled,
-.generateNoteButton:disabled {
-  cursor: not-allowed;
-  opacity: 0.55;
 }
 
 .noteTiming {
@@ -338,13 +319,6 @@
   font-size: 9px;
 }
 
-.generateNoteButton {
-  padding: 10px;
-  border-color: var(--acid);
-  color: #07111e;
-  background: var(--acid);
-}
-
 .noteRange {
   display: flex;
   justify-content: space-between;
@@ -355,14 +329,12 @@
   color: var(--acid);
 }
 
-.noteMessage,
 .noteError {
   margin: 0;
   font-size: 8px;
   line-height: 1.5;
 }
 
-.noteMessage { color: #9cabb4; }
 .noteError { color: #ff9f7f; }
 
 .finalNoteNotice {

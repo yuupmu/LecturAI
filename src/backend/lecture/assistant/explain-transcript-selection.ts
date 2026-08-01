@@ -23,6 +23,9 @@ export function formatSelectionContext(
       sourceItemIds: context.selection.sourceItemIds,
       startSequence: context.selection.startSequence,
       endSequence: context.selection.endSequence,
+      kind: context.selection.kind,
+      targetLanguage: context.selection.targetLanguage,
+      intent: context.selection.intent ?? "explain",
     }),
     "</highlighted_transcript_metadata>",
   ].join("\n");

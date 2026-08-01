@@ -25,19 +25,17 @@ import { SelectionExplanationModal } from "@/components/lecturai/SelectionExplan
 import {
   ApiError,
   askLectureQuestion,
-  askTranscriptSelection,
   cancelAutomaticEnding,
   checkDeferredQuestion,
   createDeferredQuestion,
   createSession,
   endLectureAbsence,
   explainDeferredQuestion,
-  generateLectureNote,
+  explainTranscriptSelection,
   postTranscript,
   rejoinUnderstandingBranch,
   requestMissedFlowRecovery,
   sendUnderstandingBranchMessage,
-  setAutomaticLectureNotes,
   setTranslationSettings,
   startUnderstandingBranch,
   startLectureAbsence,
@@ -335,7 +333,16 @@ export default function LecturAIApp() {
       if (usingTestAudio) testAudio.stop();
       if (usingTestText) testText.stop();
       const errorLog = captureClientError("lecture.start", startError);
-      if (!created) {
+      const configurationFailure =
+        startError instanceof ApiError && startError.status === 503;
+      if (!created || configurationFailure) {
+        if (configurationFailure) {
+          realtime.disconnect();
+          setSessionId(null);
+          setSessionSeed(null);
+          setStartedAt(null);
+          setElapsedSeconds(0);
+        }
         stream?.getTracks().forEach((track) => track.stop());
         if (nextMaterialUrl) {
           URL.revokeObjectURL(nextMaterialUrl);
@@ -355,7 +362,9 @@ export default function LecturAIApp() {
             : permissionDenied
             ? "마이크 권한이 필요합니다. 브라우저 주소창의 마이크 권한을 허용한 뒤 다시 연결하세요."
             : startError instanceof ApiError
-              ? "자료를 분석하지 못했습니다. PDF/PPTX 파일과 API 설정을 확인한 뒤 다시 시도하세요."
+              ? configurationFailure
+                ? startError.message
+                : "자료를 분석하지 못했습니다. PDF/PPTX 파일과 API 설정을 확인한 뒤 다시 시도하세요."
               : "강의실을 열지 못했습니다. 마이크와 네트워크 상태를 확인해 주세요.",
         );
       } else {
@@ -907,8 +916,6 @@ function LiveWorkspace(props: LiveWorkspaceProps) {
     onDemoTranscript,
     onReturnToSetup,
   } = props;
-  const [noteRequestBusy, setNoteRequestBusy] = useState(false);
-  const [noteMessage, setNoteMessage] = useState<string | null>(null);
   const [endingCancelBusy, setEndingCancelBusy] = useState(false);
   const [translationBusy, setTranslationBusy] = useState(false);
   const [translationFeedback, setTranslationFeedback] = useState<string | null>(null);
@@ -925,7 +932,7 @@ function LiveWorkspace(props: LiveWorkspaceProps) {
     previousBranchCount: number;
   } | null>(null);
   const [selectionQuestionModal, setSelectionQuestionModal] = useState<{
-    questionId: string | null;
+    requestId: string | null;
     selection: TranscriptSelectionDto;
     anchor: { top: number; left: number };
     error: string | null;
@@ -1038,32 +1045,6 @@ function LiveWorkspace(props: LiveWorkspaceProps) {
     }
   };
 
-  const handleGenerateNote = async () => {
-    setNoteRequestBusy(true);
-    setNoteMessage(null);
-    try {
-      const result = await generateLectureNote(sessionId);
-      setNoteMessage(result.message);
-    } catch (error) {
-      setNoteMessage(error instanceof ApiError ? error.message : "필기 요청에 실패했습니다.");
-    } finally {
-      setNoteRequestBusy(false);
-    }
-  };
-
-  const handleToggleAutomaticNotes = async (enabled: boolean) => {
-    setNoteRequestBusy(true);
-    setNoteMessage(null);
-    try {
-      const result = await setAutomaticLectureNotes(sessionId, enabled);
-      setNoteMessage(result.message);
-    } catch (error) {
-      setNoteMessage(error instanceof ApiError ? error.message : "자동 필기 설정을 바꾸지 못했습니다.");
-    } finally {
-      setNoteRequestBusy(false);
-    }
-  };
-
   const handleQuestion = async (question: string) => {
     await askLectureQuestion(sessionId, question);
   };
@@ -1072,11 +1053,11 @@ function LiveWorkspace(props: LiveWorkspaceProps) {
     selection: TranscriptSelectionDto,
     anchor: { top: number; left: number },
   ) => {
-    setSelectionQuestionModal({ questionId: null, selection, anchor, error: null });
+    setSelectionQuestionModal({ requestId: null, selection, anchor, error: null });
     try {
-      const result = await askTranscriptSelection(sessionId, selection);
+      const result = await explainTranscriptSelection(sessionId, selection);
       setSelectionQuestionModal((current) => current
-        ? { ...current, questionId: result.questionId, error: null }
+        ? { ...current, requestId: result.requestId, error: null }
         : current);
     } catch (error) {
       setSelectionQuestionModal((current) => current
@@ -1413,10 +1394,6 @@ function LiveWorkspace(props: LiveWorkspaceProps) {
             noteGeneration={noteGeneration}
             sessionEnded={phase === "ended" || sessionFinalizing}
             hasNewTranscript={hasNewTranscript}
-            message={noteMessage}
-            requestBusy={noteRequestBusy}
-            onGenerate={() => void handleGenerateNote()}
-            onToggle={(enabled) => void handleToggleAutomaticNotes(enabled)}
           />
         </div>
       </div>
@@ -1564,8 +1541,8 @@ function LiveWorkspace(props: LiveWorkspaceProps) {
 
       {selectionQuestionModal && (
         <SelectionExplanationModal
-          question={questions.find(
-            (question) => question.id === selectionQuestionModal.questionId,
+          request={(sessionState?.assistantRequests ?? []).find(
+            (request) => request.id === selectionQuestionModal.requestId,
           ) ?? null}
           selectedText={selectionQuestionModal.selection.selectedText}
           anchor={selectionQuestionModal.anchor}

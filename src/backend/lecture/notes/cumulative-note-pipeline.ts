@@ -562,29 +562,6 @@ export function startAutomaticNoteSchedule(session: LectureSession): void {
   }
 }
 
-export function setAutomaticNoteGeneration(
-  session: LectureSession,
-  enabled: boolean,
-): NoteGenerationRequestResult {
-  if (session.status === "finalizing" || session.status === "ended") {
-    return { accepted: false, queued: false, message: "종료된 수업의 설정은 변경할 수 없습니다." };
-  }
-  session.noteGeneration.enabled = enabled;
-  if (enabled) scheduleNextAutomaticNote(session, "automatic_notes_enabled");
-  else clearAutomaticNoteSchedule(session, "automatic_notes_disabled");
-  touchSession(session);
-  const intervalLabel = session.noteGeneration.intervalSeconds === 120
-    ? "2분"
-    : `${session.noteGeneration.intervalSeconds}초`;
-  return {
-    accepted: true,
-    queued: false,
-    message: enabled
-      ? `자동 필기를 켰습니다. ${intervalLabel} 뒤 최신 대본을 정리합니다.`
-      : "자동 필기를 껐습니다. 대본 저장과 수동 필기는 계속됩니다.",
-  };
-}
-
 async function drainOnePendingManualRequest(
   session: LectureSession,
   dependencies: NoteGenerationDependencies,

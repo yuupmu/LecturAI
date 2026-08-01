@@ -12,6 +12,7 @@ const displayFont = Gowun_Batang({
   subsets: ["latin"],
   variable: "--font-display",
   display: "swap",
+  preload: false,
 });
 
 const uiFont = IBM_Plex_Sans_KR({
@@ -19,6 +20,7 @@ const uiFont = IBM_Plex_Sans_KR({
   subsets: ["latin"],
   variable: "--font-ui",
   display: "swap",
+  preload: false,
 });
 
 const monoFont = IBM_Plex_Mono({

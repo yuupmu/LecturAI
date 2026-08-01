@@ -5,6 +5,10 @@ import {
   publicErrorDiagnostic,
   recordSessionError,
 } from "@/backend/logs/error-log";
+import {
+  BackendConfigurationError,
+  backendConfigurationErrorMessage,
+} from "@/backend/env";
 import { createTranscriptionToken } from "@/backend/realtime/create-transcription-token";
 import { RealtimeTokenInputSchema } from "@/backend/schemas";
 import { getSession } from "@/backend/session-store";
@@ -14,8 +18,10 @@ export const runtime = "nodejs";
 // Returns the OpenAI ephemeral secret response, never the server API key.
 export async function POST(request: Request) {
   let session: ReturnType<typeof getSession> = undefined;
+  let requestInputValidated = false;
   try {
     const input = RealtimeTokenInputSchema.parse(await request.json());
+    requestInputValidated = true;
     session = getSession(input.sessionId);
     if (!session) {
       return NextResponse.json({ error: "Session not found" }, { status: 404 });
@@ -36,15 +42,25 @@ export async function POST(request: Request) {
     }
     return NextResponse.json(await createTranscriptionToken(session.slideMap));
   } catch (error) {
+    const isRequestValidation =
+      !requestInputValidated && error instanceof z.ZodError;
+    const isConfiguration = error instanceof BackendConfigurationError;
     const log = session
       ? recordSessionError(session, "api.realtime.token", error)
       : logServerError("api.realtime.token", error);
     return NextResponse.json(
       {
-        error: error instanceof z.ZodError ? "Invalid request" : "Token creation failed",
+        error: isRequestValidation
+          ? "Invalid request"
+          : isConfiguration
+            ? backendConfigurationErrorMessage(error)
+            : "Token creation failed",
+        ...(isConfiguration
+          ? { code: "SERVER_CONFIGURATION_ERROR" }
+          : {}),
         diagnostic: publicErrorDiagnostic(log),
       },
-      { status: error instanceof z.ZodError ? 400 : 502 },
+      { status: isRequestValidation ? 400 : isConfiguration ? 503 : 502 },
     );
   }
 }

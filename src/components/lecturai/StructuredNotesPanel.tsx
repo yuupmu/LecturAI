@@ -7,18 +7,10 @@ export function StructuredNotesPanel({
   noteGeneration,
   sessionEnded,
   hasNewTranscript,
-  message,
-  requestBusy,
-  onGenerate,
-  onToggle,
 }: {
   noteGeneration: NoteGenerationStateDto;
   sessionEnded: boolean;
   hasNewTranscript: boolean;
-  message: string | null;
-  requestBusy: boolean;
-  onGenerate: () => void;
-  onToggle: (enabled: boolean) => void;
 }) {
   const note = noteGeneration.finalNote ?? noteGeneration.currentNote;
   const active = noteGeneration.status === "queued" ||
@@ -35,10 +27,6 @@ export function StructuredNotesPanel({
           state={noteGeneration}
           sessionEnded={sessionEnded}
           hasNewTranscript={hasNewTranscript}
-          message={message}
-          requestBusy={requestBusy}
-          onGenerate={onGenerate}
-          onToggle={onToggle}
         />
         {noteGeneration.finalNote && (
           <div className={styles.finalNoteNotice}>
@@ -49,7 +37,7 @@ export function StructuredNotesPanel({
         {!note && !active && (
           <div className={styles.emptyNotes}>
             <span>WAITING FOR CHECKPOINT</span>
-            <p>2분마다 새 대본을 기존 필기에 통합합니다. 원하면 지금 바로 정리할 수 있습니다.</p>
+            <p>2분마다 새 대본을 기존 필기에 자동으로 통합합니다.</p>
           </div>
         )}
         {active && (

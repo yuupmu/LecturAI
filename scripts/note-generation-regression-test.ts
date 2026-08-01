@@ -3,7 +3,6 @@ import {
   requestNoteGeneration,
   runDueAutomaticNoteCheckpoint,
   scheduleNextAutomaticNote,
-  setAutomaticNoteGeneration,
   type NoteGenerationDependencies,
 } from "../src/backend/lecture/notes/cumulative-note-pipeline";
 import { finalizeLectureSession } from "../src/backend/lecture/notes/finalize-lecture-session";
@@ -338,9 +337,7 @@ async function testNegativeEmphasisIsNotPromoted(): Promise<void> {
 
 async function testToggleAndResetStaleResult(): Promise<void> {
   const session = makeSession();
-  assert.equal(setAutomaticNoteGeneration(session, false).accepted, true);
-  assert.equal(session.noteGeneration.nextScheduledAt, null);
-  assert.equal(setAutomaticNoteGeneration(session, true).accepted, true);
+  scheduleNextAutomaticNote(session, "reset_stale_test");
   assert.ok(session.noteGeneration.nextScheduledAt);
 
   addTranscript(session, 1, "정렬된 데이터가 조건입니다.");
