@@ -2,8 +2,10 @@
 
 import {
   type ChangeEvent,
+  type CSSProperties,
   type DragEvent,
   type KeyboardEvent,
+  type PointerEvent as ReactPointerEvent,
   useCallback,
   useEffect,
   useRef,
@@ -854,6 +856,8 @@ function LiveWorkspace(props: LiveWorkspaceProps) {
     useState<TranslationSettingsDto | null>(null);
   const [parallelFeedback, setParallelFeedback] = useState<string | null>(null);
   const [materialVisible, setMaterialVisible] = useState(true);
+  const [assistantHeightVh, setAssistantHeightVh] = useState(46);
+  const [resizingAssistant, setResizingAssistant] = useState(false);
   const [understandingOpening, setUnderstandingOpening] = useState<{
     selectedText: string | null;
     requestedAt: number;
@@ -916,6 +920,9 @@ function LiveWorkspace(props: LiveWorkspaceProps) {
   );
   const sessionFinalizing = sessionState?.status === "finalizing";
   const sessionEnded = sessionState?.status === "ended";
+  const activeUnderstandingBranch = understandingBranches.find(
+    (branch) => branch.status === "active" || branch.status === "rejoining",
+  ) ?? null;
   const visibleUnderstandingOpening = understandingOpening &&
       understandingBranches.length <= understandingOpening.previousBranchCount
     ? understandingOpening
@@ -1006,6 +1013,47 @@ function LiveWorkspace(props: LiveWorkspaceProps) {
       setUnderstandingOpening(null);
       setParallelFeedback(error instanceof ApiError ? error.message : "이해 분기를 시작하지 못했습니다.");
       throw error;
+    }
+  };
+
+  const handleAssistantResizeStart = (
+    event: ReactPointerEvent<HTMLButtonElement>,
+  ) => {
+    if (window.matchMedia("(max-width: 1099px)").matches) return;
+    event.preventDefault();
+    const startY = event.clientY;
+    const startHeightVh = assistantHeightVh;
+    setResizingAssistant(true);
+    document.body.style.cursor = "row-resize";
+    document.body.style.userSelect = "none";
+
+    const handlePointerMove = (moveEvent: globalThis.PointerEvent) => {
+      const deltaVh = (moveEvent.clientY - startY) / window.innerHeight * 100;
+      setAssistantHeightVh(clampAssistantHeight(startHeightVh - deltaVh));
+    };
+    const stopResize = () => {
+      setResizingAssistant(false);
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
+      window.removeEventListener("pointermove", handlePointerMove);
+      window.removeEventListener("pointerup", stopResize);
+      window.removeEventListener("pointercancel", stopResize);
+    };
+    window.addEventListener("pointermove", handlePointerMove);
+    window.addEventListener("pointerup", stopResize);
+    window.addEventListener("pointercancel", stopResize);
+  };
+
+  const handleAssistantResizeKey = (event: KeyboardEvent<HTMLButtonElement>) => {
+    if (event.key === "ArrowUp" || event.key === "ArrowDown") {
+      event.preventDefault();
+      setAssistantHeightVh((height) => clampAssistantHeight(
+        height + (event.key === "ArrowUp" ? 4 : -4),
+      ));
+    }
+    if (event.key === "Home") {
+      event.preventDefault();
+      setAssistantHeightVh(46);
     }
   };
 
@@ -1165,7 +1213,12 @@ function LiveWorkspace(props: LiveWorkspaceProps) {
             : "수업 대본을 저장하고 다음 필기 체크포인트를 기다리고 있습니다.");
 
   return (
-    <main className={`${styles.workspace} ${phase === "ended" ? styles.workspaceEnded : ""}`}>
+    <main
+      className={`${styles.workspace} ${phase === "ended" ? styles.workspaceEnded : ""} ${resizingAssistant ? styles.workspaceResizing : ""}`}
+      style={{
+        "--assistant-height": `calc(${assistantHeightVh}svh - ${assistantHeightVh * 0.69}px)`,
+      } as CSSProperties}
+    >
       <SignalRail
         title={slideMap.documentTitle || fileName}
         elapsed={elapsedSeconds}
@@ -1229,6 +1282,7 @@ function LiveWorkspace(props: LiveWorkspaceProps) {
                   translationSettings={translationSettings}
                   translations={translations}
                   embedded
+                  showUnderstandingButton={false}
                   onStartUnderstanding={sessionFinalizing || sessionEnded
                     ? undefined
                     : handleStartUnderstanding}
@@ -1253,6 +1307,21 @@ function LiveWorkspace(props: LiveWorkspaceProps) {
         </div>
       </div>
 
+      <button
+        className={styles.workspaceDivider}
+        type="button"
+        role="separator"
+        aria-label="상호작용 영역 높이 조절"
+        aria-orientation="horizontal"
+        aria-valuemin={25}
+        aria-valuemax={100}
+        aria-valuenow={Math.round(assistantHeightVh)}
+        aria-valuetext={`화면 높이의 약 ${Math.round(assistantHeightVh)}퍼센트`}
+        onPointerDown={handleAssistantResizeStart}
+        onKeyDown={handleAssistantResizeKey}
+        onDoubleClick={() => setAssistantHeightVh(46)}
+      />
+
       <div className={`${styles.assistantBand} ${!materialVisible ? styles.assistantBandTranscriptRaised : ""}`}>
         {materialVisible && (
           <TranscriptNotebook
@@ -1261,6 +1330,7 @@ function LiveWorkspace(props: LiveWorkspaceProps) {
             translationSettings={translationSettings}
             translations={translations}
             embedded
+            showUnderstandingButton={false}
             onStartUnderstanding={sessionFinalizing || sessionEnded
               ? undefined
               : handleStartUnderstanding}
@@ -1270,19 +1340,51 @@ function LiveWorkspace(props: LiveWorkspaceProps) {
           />
         )}
         <div className={styles.supportPanel}>
-          <ParallelLecturePanel
-            branches={understandingBranches}
-            deferredQuestions={deferredQuestions}
-            transcripts={transcripts}
-            disabled={sessionFinalizing || sessionEnded}
-            feedback={parallelFeedback}
-            openingInteraction={visibleUnderstandingOpening}
-            onMessage={handleBranchMessage}
-            onRejoin={handleRejoin}
-            onCheckDeferred={handleCheckDeferred}
-            onUpdateDeferred={handleUpdateDeferred}
-            onExplainDeferred={handleExplainDeferred}
-          />
+          <div className={styles.quickInteractionBar}>
+            <div>
+              <span>QUICK INTERACTION</span>
+              <small>수업을 멈추지 않고 바로 도움받기</small>
+            </div>
+            <button
+              type="button"
+              disabled={
+                transcripts.length === 0 ||
+                sessionFinalizing ||
+                sessionEnded ||
+                Boolean(visibleUnderstandingOpening) ||
+                Boolean(activeUnderstandingBranch)
+              }
+              onClick={() => void handleStartUnderstanding().catch(() => undefined)}
+            >
+              <span aria-hidden="true">?</span>
+              <div>
+                <strong>
+                  {visibleUnderstandingOpening
+                    ? "AI가 분석하고 있어요…"
+                    : activeUnderstandingBranch
+                      ? "개인 보충 설명 진행 중"
+                      : "방금 내용이 이해되지 않아요"}
+                </strong>
+                <small>방금 대본을 더 쉽게 풀어서 설명받기</small>
+              </div>
+              <i aria-hidden="true">→</i>
+            </button>
+          </div>
+          <div className={styles.parallelLectureSlot}>
+            <ParallelLecturePanel
+              branches={understandingBranches}
+              deferredQuestions={deferredQuestions}
+              transcripts={transcripts}
+              disabled={sessionFinalizing || sessionEnded}
+              feedback={parallelFeedback}
+              openingInteraction={visibleUnderstandingOpening}
+              onMessage={handleBranchMessage}
+              onRejoin={handleRejoin}
+              onCheckDeferred={handleCheckDeferred}
+              onUpdateDeferred={handleUpdateDeferred}
+              onExplainDeferred={handleExplainDeferred}
+            />
+          </div>
           <MissedFlowControl
             requests={missedFlowRequests}
             disabled={sessionFinalizing || sessionEnded}
@@ -1899,6 +2001,10 @@ function formatElapsed(totalSeconds: number): string {
   const minutes = Math.floor(totalSeconds / 60);
   const seconds = totalSeconds % 60;
   return `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
+}
+
+function clampAssistantHeight(heightVh: number): number {
+  return Math.min(100, Math.max(25, heightVh));
 }
 
 function formatAudioTime(totalSeconds: number): string {
