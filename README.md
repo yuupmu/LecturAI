@@ -76,6 +76,14 @@ curl -u "$SITE_USERNAME:$SITE_PASSWORD" https://YOUR_SITE/api/health
 bash deploy/setup-ubuntu-vm.sh
 ```
 
+Google Cloud Shell에서는 다음 명령으로 서울 리전의 `e2-medium`, 30GB
+Ubuntu VM, 고정 IP, 웹 방화벽을 생성합니다. Compute Engine 사용 요금이
+발생하며, 같은 이름의 리소스가 있으면 중복 생성하지 않습니다.
+
+```bash
+bash deploy/create-gcp-vm.sh GOOGLE_CLOUD_PROJECT_ID
+```
+
 ## 현재 처리 흐름
 
 ```text
