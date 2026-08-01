@@ -46,6 +46,49 @@ npm run dev
 
 기본 주소는 `http://localhost:3000`입니다. 실제 마이크는 브라우저 권한이 필요합니다.
 
+## 단일 VM 운영 배포
+
+현재 메모리 세션 구조를 유지하는 데모/소규모 운영 환경은 Google Compute
+Engine 같은 단일 Linux VM에서 `compose.yaml`로 실행합니다. Compose는 Next.js
+앱과 자동 HTTPS 리버스 프록시인 Caddy를 각각 하나씩 실행합니다. 현재 사이트는
+별도 로그인 없이 공개되므로 OpenAI API 사용량과 비용을 모니터링해야 합니다.
+
+서버 환경변수는 저장소에 커밋하지 않고 다음 두 파일에 둡니다.
+
+```text
+/etc/lecturai/app.env     # .env.example과 같은 앱 설정
+/etc/lecturai/caddy.env   # deploy/caddy.env.example과 같은 HTTPS/접근 설정
+```
+
+도메인이 없을 때는 VM 고정 IPv4를 `203.0.113.10`처럼 하이픈으로 바꾼
+`lecturai.203-0-113-10.sslip.io`를 데모 주소로 사용할 수 있습니다. 이 주소는
+외부 무료 DNS 서비스에 의존하므로 정식 운영 전에는 소유 도메인으로 교체합니다.
+
+```bash
+sudo docker compose up -d --build
+sudo docker compose ps
+curl https://YOUR_SITE/api/health
+```
+
+컨테이너나 VM을 재시작하면 메모리의 강의 세션은 사라집니다. 여러 앱
+컨테이너를 동시에 실행하지 마세요.
+
+새 Ubuntu 24.04 Compute Engine VM에서는 다음 설치 스크립트를 실행할 수
+있습니다. OpenAI 키와 인증서 알림 이메일을 터미널에서 직접 물어보고
+`/etc/lecturai`에 권한 `0600`으로 저장합니다.
+
+```bash
+bash deploy/setup-ubuntu-vm.sh
+```
+
+Google Cloud Shell에서는 다음 명령으로 서울 리전의 `e2-medium`, 30GB
+Ubuntu VM, 고정 IP, 웹 방화벽을 생성합니다. Compute Engine 사용 요금이
+발생하며, 같은 이름의 리소스가 있으면 중복 생성하지 않습니다.
+
+```bash
+bash deploy/create-gcp-vm.sh GOOGLE_CLOUD_PROJECT_ID
+```
+
 ## 현재 처리 흐름
 
 ```text

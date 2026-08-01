@@ -1,0 +1,11 @@
+.git
+.github
+.vscode
+.next
+node_modules
+.env
+.env.*
+!.env.example
+npm-debug.log*
+README.md
+deploy
