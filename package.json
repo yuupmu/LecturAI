@@ -1,0 +1,30 @@
+{
+  "name": "lecturai-demo",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "eslint .",
+    "typecheck": "tsc --noEmit",
+    "demo:smoke": "tsx scripts/demo-smoke-test.ts"
+  },
+  "dependencies": {
+    "@openai/agents": "^0.14.2",
+    "next": "^16.2.12",
+    "openai": "^7.3.0",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@types/node": "^26.1.2",
+    "@types/react": "^19.2.18",
+    "@types/react-dom": "^19.2.4",
+    "eslint": "^9.39.3",
+    "eslint-config-next": "^16.2.12",
+    "tsx": "^4.23.1",
+    "typescript": "^6.0.2"
+  }
+}

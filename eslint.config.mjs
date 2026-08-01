@@ -1,0 +1,10 @@
+import { defineConfig, globalIgnores } from "eslint/config";
+import nextVitals from "eslint-config-next/core-web-vitals";
+import nextTypescript from "eslint-config-next/typescript";
+
+// Next.js flat config covers React, accessibility-adjacent, and TypeScript rules.
+export default defineConfig([
+  ...nextVitals,
+  ...nextTypescript,
+  globalIgnores([".next/**", "node_modules/**", "next-env.d.ts"]),
+]);
